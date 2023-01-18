@@ -1,5 +1,5 @@
-#ifndef _TINYGL_UTILS_H_
-#define _TINYGL_UTILS_H_
+#ifndef _FFRENDER_UTILS_H_
+#define _FFRENDER_UTILS_H_
 
 #include <stdint.h>
 

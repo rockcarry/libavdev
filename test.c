@@ -1,12 +1,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "texture.h"
-#include "display.h"
+#include "vdev.h"
 
 int main(void)
 {
-    void    *disp    = display_init(640, 480, "inithidden", NULL, NULL);
-    TEXTURE *texture = display_get(disp, "texture");
+    void    *vdev    = vdev_init(640, 480, "inithidden", NULL, NULL);
+    TEXTURE *texture = vdev_get(vdev, "texture");
     int      i, j;
     texture_lock(texture);
     for (i = 0; i < texture->h; i++) {
@@ -15,8 +15,8 @@ int main(void)
         }
     }
     texture_unlock(texture);
-    display_set(disp, "show", NULL);
-    display_free(disp, 0);
+    vdev_set(vdev, "show", NULL);
+    vdev_free(vdev, 0);
     return 0;
 }
 

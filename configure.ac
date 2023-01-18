@@ -3,7 +3,7 @@
 
 AC_PREREQ([2.71])
 AC_INIT([librender], [1.0.0], [chenk@apical.com.cn])
-AC_CONFIG_SRCDIR([display.c])
+AC_CONFIG_SRCDIR([test.c])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([Makefile])
 
@@ -15,6 +15,7 @@ AC_PROG_LIBTOOL
 
 # Checks for libraries.
 AC_CHECK_LIB([pthread], [pthread_create])
+AC_CHECK_LIB([gdi32], [CreateWindow])
 
 # Checks for header files.
 AC_CHECK_HEADERS([stdint.h unistd.h])
@@ -30,4 +31,3 @@ AC_FUNC_MALLOC
 AC_CHECK_FUNCS([clock_gettime strcasecmp])
 
 AC_OUTPUT
-

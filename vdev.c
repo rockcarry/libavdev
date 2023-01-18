@@ -2,7 +2,7 @@
 #include <windows.h>
 #include <pthread.h>
 #include "texture.h"
-#include "display.h"
+#include "vdev.h"
 #include "utils.h"
 
 //++ directdraw types and defines
@@ -159,39 +159,39 @@ typedef struct {
     uint32_t  flags;
     pthread_t hthread;
 
-    PFN_DISP_MSG_CB callback;
+    PFN_VDEV_MSG_CB callback;
     void           *cbctx;
-} DISP;
+} VDEV;
 
 #define TINYGL_WND_CLASS TEXT("TinyGLWndClass")
 #define TINYGL_WND_NAME  TEXT("TinyGLWindow"  )
 
-static int init_free_for_ddraw_gdi(DISP *disp, int init)
+static int init_free_for_ddraw_gdi(VDEV *vdev, int init)
 {
-    if (disp->flags & FLAG_DDRAW) {
+    if (vdev->flags & FLAG_DDRAW) {
         if (init) {
             PFN_DirectDrawCreate create = NULL;
             DDSURFACEDESC        ddsd   = {0};
-            disp->hDDrawDll = LoadLibrary(TEXT("ddraw.dll"));
-            if (!disp->hDDrawDll) return -1;
-            create = (PFN_DirectDrawCreate)GetProcAddress(disp->hDDrawDll, "DirectDrawCreate");
+            vdev->hDDrawDll = LoadLibrary(TEXT("ddraw.dll"));
+            if (!vdev->hDDrawDll) return -1;
+            create = (PFN_DirectDrawCreate)GetProcAddress(vdev->hDDrawDll, "DirectDrawCreate");
             if (!create) return -1;
-            create(NULL, (void**)&disp->lpDirectDraw, NULL);
-            if (disp->lpDirectDraw == NULL) return -1;
-            disp->lpDirectDraw->pVtbl->SetCooperativeLevel(disp->lpDirectDraw, disp->hwnd, DDSCL_FULLSCREEN|DDSCL_EXCLUSIVE);
-            disp->lpDirectDraw->pVtbl->SetDisplayMode(disp->lpDirectDraw, disp->texture.w, disp->texture.h, 32);
+            create(NULL, (void**)&vdev->lpDirectDraw, NULL);
+            if (vdev->lpDirectDraw == NULL) return -1;
+            vdev->lpDirectDraw->pVtbl->SetCooperativeLevel(vdev->lpDirectDraw, vdev->hwnd, DDSCL_FULLSCREEN|DDSCL_EXCLUSIVE);
+            vdev->lpDirectDraw->pVtbl->SetDisplayMode(vdev->lpDirectDraw, vdev->texture.w, vdev->texture.h, 32);
 
             ddsd.dwSize  = sizeof(ddsd);
             ddsd.dwFlags = DDSD_CAPS;
             ddsd.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
-            disp->lpDirectDraw->pVtbl->CreateSurface(disp->lpDirectDraw, &ddsd, &disp->lpDDSPrimary, NULL);
-            if (disp->lpDDSPrimary == NULL) return -1;
-            disp->texture.w = ddsd.dwWidth;
-            disp->texture.h = ddsd.dwHeight;
+            vdev->lpDirectDraw->pVtbl->CreateSurface(vdev->lpDirectDraw, &ddsd, &vdev->lpDDSPrimary, NULL);
+            if (vdev->lpDDSPrimary == NULL) return -1;
+            vdev->texture.w = ddsd.dwWidth;
+            vdev->texture.h = ddsd.dwHeight;
         } else {
-            if (disp->lpDDSPrimary) { disp->lpDDSPrimary->pVtbl->Release(disp->lpDDSPrimary); disp->lpDDSPrimary = NULL; }
-            if (disp->lpDirectDraw) { disp->lpDirectDraw->pVtbl->Release(disp->lpDirectDraw); disp->lpDirectDraw = NULL; }
-            if (disp->hDDrawDll   ) { FreeLibrary(disp->hDDrawDll); disp->hDDrawDll = NULL; }
+            if (vdev->lpDDSPrimary) { vdev->lpDDSPrimary->pVtbl->Release(vdev->lpDDSPrimary); vdev->lpDDSPrimary = NULL; }
+            if (vdev->lpDirectDraw) { vdev->lpDirectDraw->pVtbl->Release(vdev->lpDirectDraw); vdev->lpDirectDraw = NULL; }
+            if (vdev->hDDrawDll   ) { FreeLibrary(vdev->hDDrawDll); vdev->hDDrawDll = NULL; }
         }
     } else {
         if (init) {
@@ -199,83 +199,83 @@ static int init_free_for_ddraw_gdi(DISP *disp, int init)
             BITMAP     bitmap  = {};
 
             bmpinfo.bmiHeader.biSize        =  sizeof(bmpinfo);
-            bmpinfo.bmiHeader.biWidth       =  disp->texture.w;
-            bmpinfo.bmiHeader.biHeight      = -disp->texture.h;
+            bmpinfo.bmiHeader.biWidth       =  vdev->texture.w;
+            bmpinfo.bmiHeader.biHeight      = -vdev->texture.h;
             bmpinfo.bmiHeader.biPlanes      =  1;
             bmpinfo.bmiHeader.biBitCount    =  32;
             bmpinfo.bmiHeader.biCompression =  BI_RGB;
 
-            disp->hdc  = CreateCompatibleDC(NULL);
-            disp->hbmp = CreateDIBSection(disp->hdc, &bmpinfo, DIB_RGB_COLORS, (void**)&(disp->texture.data), NULL, 0);
-            if (!disp->hdc || !disp->hbmp || !disp->texture.data) return -1;
+            vdev->hdc  = CreateCompatibleDC(NULL);
+            vdev->hbmp = CreateDIBSection(vdev->hdc, &bmpinfo, DIB_RGB_COLORS, (void**)&(vdev->texture.data), NULL, 0);
+            if (!vdev->hdc || !vdev->hbmp || !vdev->texture.data) return -1;
 
-            GetObject(disp->hbmp, sizeof(BITMAP), &bitmap);
-            SelectObject(disp->hdc, disp->hbmp);
+            GetObject(vdev->hbmp, sizeof(BITMAP), &bitmap);
+            SelectObject(vdev->hdc, vdev->hbmp);
         } else {
-            if (disp->hdc ) DeleteDC    (disp->hdc );
-            if (disp->hbmp) DeleteObject(disp->hbmp);
+            if (vdev->hdc ) DeleteDC    (vdev->hdc );
+            if (vdev->hbmp) DeleteObject(vdev->hbmp);
         }
     }
 
-    disp->flags |= FLAG_INITED;
+    vdev->flags |= FLAG_INITED;
     return 0;
 }
 
-static void disp_texture_lock(TEXTURE *t)
+static void vdev_texture_lock(TEXTURE *t)
 {
-    DISP *disp = container_of(t, DISP, texture);
-    if (disp->flags & FLAG_DDRAW) {
+    VDEV *vdev = container_of(t, VDEV, texture);
+    if (vdev->flags & FLAG_DDRAW) {
         DDSURFACEDESC ddsd = { sizeof(ddsd) };
-        disp->lpDDSPrimary->pVtbl->Lock(disp->lpDDSPrimary, NULL, &ddsd, DDLOCK_WAIT, NULL);
+        vdev->lpDDSPrimary->pVtbl->Lock(vdev->lpDDSPrimary, NULL, &ddsd, DDLOCK_WAIT, NULL);
         t->w      = ddsd.dwWidth;
         t->h      = ddsd.dwHeight;
         t->data   = ddsd.lpSurface;
     }
 }
 
-static void disp_texture_unlock(TEXTURE *t)
+static void vdev_texture_unlock(TEXTURE *t)
 {
-    DISP *disp = container_of(t, DISP, texture);
-    if (disp->flags & FLAG_CLOSED) return;
-    if (disp->flags & FLAG_DDRAW) {
-        disp->lpDDSPrimary->pVtbl->Unlock(disp->lpDDSPrimary, NULL);
+    VDEV *vdev = container_of(t, VDEV, texture);
+    if (vdev->flags & FLAG_CLOSED) return;
+    if (vdev->flags & FLAG_DDRAW) {
+        vdev->lpDDSPrimary->pVtbl->Unlock(vdev->lpDDSPrimary, NULL);
         t->data = NULL;
     } else {
 #if 1
-        HDC hdc = GetDC(disp->hwnd);
-        BitBlt(hdc, 0, 0, disp->texture.w, disp->texture.h, disp->hdc, 0, 0, SRCCOPY);
-        ReleaseDC(disp->hwnd, hdc);
+        HDC hdc = GetDC(vdev->hwnd);
+        BitBlt(hdc, 0, 0, vdev->texture.w, vdev->texture.h, vdev->hdc, 0, 0, SRCCOPY);
+        ReleaseDC(vdev->hwnd, hdc);
 #else
-        InvalidateRect(disp->hwnd, NULL, FALSE);
+        InvalidateRect(vdev->hwnd, NULL, FALSE);
 #endif
     }
 }
 
-static LRESULT CALLBACK DISP_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+static LRESULT CALLBACK VDEV_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     PAINTSTRUCT ps = {0};
     HDC        hdc = NULL;
 #ifdef _WIN64
-    DISP *disp = (DISP*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+    VDEV *vdev = (VDEV*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 #else
-    DISP *disp = (DISP*)GetWindowLong(hwnd, GWL_USERDATA);
+    VDEV *vdev = (VDEV*)GetWindowLong(hwnd, GWL_USERDATA);
 #endif
     int  ret = -1;
     switch (uMsg) {
     case WM_KEYUP: case WM_KEYDOWN: case WM_SYSKEYUP: case WM_SYSKEYDOWN:
-        if (disp->callback) ret = disp->callback(disp->cbctx, DISP_MSG_KEY_EVENT, uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN, wParam, NULL);
+        if (vdev->callback) ret = vdev->callback(vdev->cbctx, VDEV_MSG_KEY_EVENT, uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN, wParam, NULL);
         if (ret != 0 && uMsg == WM_KEYDOWN && wParam == VK_ESCAPE) PostQuitMessage(0);
         return 0;
     case WM_MOUSEMOVE: case WM_MOUSEWHEEL:
     case WM_LBUTTONUP: case WM_LBUTTONDOWN: case WM_RBUTTONUP: case WM_RBUTTONDOWN: case WM_MBUTTONUP: case WM_MBUTTONDOWN:
         return 0;
     case WM_PAINT:
-        if (disp->flags & FLAG_DDRAW) return DefWindowProc(hwnd, uMsg, wParam, lParam);
+        if (vdev->flags & FLAG_DDRAW) return DefWindowProc(hwnd, uMsg, wParam, lParam);
         hdc = BeginPaint(hwnd, &ps);
         BitBlt(hdc, ps.rcPaint.left, ps.rcPaint.top,
             ps.rcPaint.right  - ps.rcPaint.left,
             ps.rcPaint.bottom - ps.rcPaint.top,
-            disp->hdc, ps.rcPaint.left, ps.rcPaint.top, SRCCOPY);
+            vdev->hdc, ps.rcPaint.left, ps.rcPaint.top, SRCCOPY);
         EndPaint(hwnd, &ps);
         return 0;
     case WM_DESTROY:
@@ -286,15 +286,15 @@ static LRESULT CALLBACK DISP_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
     }
 }
 
-static void* disp_thread_proc(void *param)
+static void* vdev_thread_proc(void *param)
 {
-    DISP    *disp = (DISP*)param;
+    VDEV    *vdev = (VDEV*)param;
     WNDCLASS wc   = {0};
     RECT     rect = {0};
     MSG      msg  = {0};
     int      x, y, w, h;
 
-    wc.lpfnWndProc   = DISP_WNDPROC;
+    wc.lpfnWndProc   = VDEV_WNDPROC;
     wc.hInstance     = GetModuleHandle(NULL);
     wc.hIcon         = LoadIcon  (NULL, IDI_APPLICATION);
     wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
@@ -302,29 +302,29 @@ static void* disp_thread_proc(void *param)
     wc.lpszClassName = TINYGL_WND_CLASS;
     if (!RegisterClass(&wc)) return NULL;
 
-    disp->hwnd = CreateWindow(TINYGL_WND_CLASS, TINYGL_WND_NAME, (disp->flags & FLAG_DDRAW) ? WS_POPUP : (WS_SYSMENU|WS_MINIMIZEBOX),
-        CW_USEDEFAULT, CW_USEDEFAULT, disp->texture.w, disp->texture.h,
+    vdev->hwnd = CreateWindow(TINYGL_WND_CLASS, TINYGL_WND_NAME, (vdev->flags & FLAG_DDRAW) ? WS_POPUP : (WS_SYSMENU|WS_MINIMIZEBOX),
+        CW_USEDEFAULT, CW_USEDEFAULT, vdev->texture.w, vdev->texture.h,
         NULL, NULL, wc.hInstance, NULL);
-    if (!disp->hwnd) goto done;
+    if (!vdev->hwnd) goto done;
 
 #ifdef _WIN64
-    SetWindowLongPtr(disp->hwnd, GWLP_USERDATA, (LONG_PTR)disp);
+    SetWindowLongPtr(vdev->hwnd, GWLP_USERDATA, (LONG_PTR)vdev);
 #else
-    SetWindowLong(disp->hwnd, GWL_USERDATA, (LONG)disp);
+    SetWindowLong(vdev->hwnd, GWL_USERDATA, (LONG)vdev);
 #endif
-    GetClientRect(disp->hwnd, &rect);
-    w = disp->texture.w + (disp->texture.w - rect.right );
-    h = disp->texture.h + (disp->texture.h - rect.bottom);
+    GetClientRect(vdev->hwnd, &rect);
+    w = vdev->texture.w + (vdev->texture.w - rect.right );
+    h = vdev->texture.h + (vdev->texture.h - rect.bottom);
     x = (GetSystemMetrics(SM_CXSCREEN) - w) / 2;
     y = (GetSystemMetrics(SM_CYSCREEN) - h) / 2;
     x = x > 0 ? x : 0;
     y = y > 0 ? y : 0;
 
-    MoveWindow(disp->hwnd, x, y, w, h, FALSE);
-    if (init_free_for_ddraw_gdi(disp, 1) == -1) goto done;
-    if (!(disp->flags & FLAG_NOSHOW)) {
-        ShowWindow(disp->hwnd, SW_SHOW);
-        UpdateWindow(disp->hwnd);
+    MoveWindow(vdev->hwnd, x, y, w, h, FALSE);
+    if (init_free_for_ddraw_gdi(vdev, 1) == -1) goto done;
+    if (!(vdev->flags & FLAG_NOSHOW)) {
+        ShowWindow(vdev->hwnd, SW_SHOW);
+        UpdateWindow(vdev->hwnd);
     }
 
     while (GetMessage(&msg, NULL, 0, 0)) {
@@ -333,61 +333,61 @@ static void* disp_thread_proc(void *param)
     }
 
 done:
-    init_free_for_ddraw_gdi(disp, 0);
-    if (disp->hwnd) { DestroyWindow(disp->hwnd); disp->hwnd = NULL; }
-    disp->flags |= FLAG_CLOSED;
+    init_free_for_ddraw_gdi(vdev, 0);
+    if (vdev->hwnd) { DestroyWindow(vdev->hwnd); vdev->hwnd = NULL; }
+    vdev->flags |= FLAG_CLOSED;
     return NULL;
 }
 
-void* display_init(int w, int h, char *params, PFN_DISP_MSG_CB callback, void *cbctx)
+void* vdev_init(int w, int h, char *params, PFN_VDEV_MSG_CB callback, void *cbctx)
 {
-    DISP *disp = calloc(1, sizeof(DISP));
-    if (!disp) return NULL;
+    VDEV *vdev = calloc(1, sizeof(VDEV));
+    if (!vdev) return NULL;
 
     if (params) {
-        if      (strcmp(params, "fullscreen") == 0) disp->flags |= FLAG_DDRAW;
-        else if (strcmp(params, "inithidden") == 0) disp->flags |= FLAG_NOSHOW;
+        if      (strcmp(params, "fullscreen") == 0) vdev->flags |= FLAG_DDRAW;
+        else if (strcmp(params, "inithidden") == 0) vdev->flags |= FLAG_NOSHOW;
     }
-    disp->callback       = callback;
-    disp->cbctx          = cbctx;
-    disp->texture.w      = w;
-    disp->texture.h      = h;
-    disp->texture.lock   = disp_texture_lock;
-    disp->texture.unlock = disp_texture_unlock;
-    pthread_create(&disp->hthread, NULL, disp_thread_proc, disp);
-    while (!(disp->flags & (FLAG_INITED | FLAG_CLOSED))) usleep(100 * 1000);
-    if (disp->flags & FLAG_CLOSED) {
-        display_free(disp, 0);
-        disp = NULL;
+    vdev->callback       = callback;
+    vdev->cbctx          = cbctx;
+    vdev->texture.w      = w;
+    vdev->texture.h      = h;
+    vdev->texture.lock   = vdev_texture_lock;
+    vdev->texture.unlock = vdev_texture_unlock;
+    pthread_create(&vdev->hthread, NULL, vdev_thread_proc, vdev);
+    while (!(vdev->flags & (FLAG_INITED | FLAG_CLOSED))) usleep(100 * 1000);
+    if (vdev->flags & FLAG_CLOSED) {
+        vdev_free(vdev, 0);
+        vdev = NULL;
     }
-    return disp;
+    return vdev;
 }
 
-void display_free(void *ctx, int close)
+void vdev_free(void *ctx, int close)
 {
-    DISP *disp = (DISP*)ctx;
-    if (!disp) return;
-    if (close && disp->hwnd) PostMessage(disp->hwnd, WM_CLOSE, 0, 0);
-    if (disp->hthread) pthread_join(disp->hthread, NULL);
-    free(disp);
+    VDEV *vdev = (VDEV*)ctx;
+    if (!vdev) return;
+    if (close && vdev->hwnd) PostMessage(vdev->hwnd, WM_CLOSE, 0, 0);
+    if (vdev->hthread) pthread_join(vdev->hthread, NULL);
+    free(vdev);
 }
 
-void display_set(void *ctx, char *name, void *data)
+void vdev_set(void *ctx, char *name, void *data)
 {
-    DISP *disp = (DISP*)ctx;
+    VDEV *vdev = (VDEV*)ctx;
     if (!ctx || !name) return;
     if (strcmp(name, "show") == 0) {
-        ShowWindow(disp->hwnd, SW_SHOW);
-        UpdateWindow(disp->hwnd);
+        ShowWindow(vdev->hwnd, SW_SHOW);
+        UpdateWindow(vdev->hwnd);
     }
 }
 
-void* display_get(void *ctx, char *name)
+void* vdev_get(void *ctx, char *name)
 {
-    DISP *disp = (DISP*)ctx;
+    VDEV *vdev = (VDEV*)ctx;
     if (!ctx || !name) return NULL;
-    if (strcmp(name, "texture") == 0) return &disp->texture;
-    if (strcmp(name, "state"  ) == 0) return (disp->flags & FLAG_CLOSED) ? "closed" : "running";
+    if (strcmp(name, "texture") == 0) return &vdev->texture;
+    if (strcmp(name, "state"  ) == 0) return (vdev->flags & FLAG_CLOSED) ? "closed" : "running";
     return NULL;
 }
 
