@@ -15,12 +15,14 @@ AC_PROG_LIBTOOL
 
 # Checks for libraries.
 AC_CHECK_LIB([pthread], [pthread_create])
+AC_CHECK_LIB([winmm], [waveOutOpen])
 AC_CHECK_LIB([gdi32], [CreateWindow])
 
 # Checks for header files.
 AC_CHECK_HEADERS([stdint.h unistd.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
+AC_TYPE_INT16_T
 AC_TYPE_INT32_T
 AC_TYPE_UINT16_T
 AC_TYPE_UINT32_T
