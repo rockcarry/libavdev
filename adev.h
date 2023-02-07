@@ -1,5 +1,5 @@
-#ifndef __FFRENDER_ADEV__
-#define __FFRENDER_ADEV__
+#ifndef __LIVAVDEV_ADEV__
+#define __LIVAVDEV_ADEV__
 
 void* adev_init(int out_samprate, int out_chnum, int out_frmsize, int out_frmnum);
 void  adev_free(void *ctx);

@@ -1,5 +1,5 @@
-#ifndef _FFRENDER_UTILS_H_
-#define _FFRENDER_UTILS_H_
+#ifndef _LIBAVDEV_UTILS_H_
+#define _LIBAVDEV_UTILS_H_
 
 #include <stdint.h>
 

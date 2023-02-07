@@ -1,5 +1,5 @@
-#ifndef __FFRENDER_VDEV__
-#define __FFRENDER_VDEV__
+#ifndef __LIBAVDEV_VDEV__
+#define __LIBAVDEV_VDEV__
 
 #include <stdint.h>
 

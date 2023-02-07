@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.71])
-AC_INIT([librender], [1.0.0], [chenk@apical.com.cn])
+AC_INIT([libavdev], [1.0.0], [chenk@apical.com.cn])
 AC_CONFIG_SRCDIR([test.c])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([Makefile])
