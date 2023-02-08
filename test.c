@@ -23,7 +23,7 @@ int main(void)
     while (1) {
         adev_play(adev, buf, sizeof(buf), -1);
     }
-    adev_free(adev);
+    adev_exit(adev);
     return 0;
 }
 #endif
@@ -42,7 +42,7 @@ int main(void)
     }
     texture_unlock(texture);
     vdev_set(vdev, "show", NULL);
-    vdev_free(vdev, 0);
+    vdev_exit(vdev, 0);
     return 0;
 }
 #endif

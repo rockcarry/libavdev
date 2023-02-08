@@ -15,7 +15,7 @@ typedef struct texture_t {
 } TEXTURE;
 
 TEXTURE* texture_init(int w, int h);
-void     texture_free(TEXTURE *t);
+void     texture_exit(TEXTURE *t);
 
 TEXTURE* texture_load(char *file);
 int      texture_save(TEXTURE *t, char *file);

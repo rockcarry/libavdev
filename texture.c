@@ -58,7 +58,7 @@ TEXTURE* texture_init(int w, int h)
     return text;
 }
 
-void texture_free(TEXTURE *t) { free(t); }
+void texture_exit(TEXTURE *t) { free(t); }
 
 static TEXTURE* texture_load_bmp(char *file)
 {
@@ -357,8 +357,8 @@ int main(int argc, char *argv[])
     texture_bitblt(texture1, 0, 0, texture2, 0, 0, -1, -1);
     texture_fillrect(texture1, 50, 50, 200, 200, RGB(0, 0, 255) | (80 << 24));
     texture_save(texture1, "out.bmp");
-    texture_free(texture1);
-    texture_free(texture2);
+    texture_exit(texture1);
+    texture_exit(texture2);
     return 0;
 }
 #endif

@@ -357,13 +357,13 @@ void* vdev_init(int w, int h, char *params, PFN_VDEV_MSG_CB callback, void *cbct
     pthread_create(&vdev->hthread, NULL, vdev_thread_proc, vdev);
     while (!(vdev->flags & (FLAG_INITED | FLAG_CLOSED))) usleep(100 * 1000);
     if (vdev->flags & FLAG_CLOSED) {
-        vdev_free(vdev, 0);
+        vdev_exit(vdev, 0);
         vdev = NULL;
     }
     return vdev;
 }
 
-void vdev_free(void *ctx, int close)
+void vdev_exit(void *ctx, int close)
 {
     VDEV *vdev = (VDEV*)ctx;
     if (!vdev) return;

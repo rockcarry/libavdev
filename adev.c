@@ -48,13 +48,13 @@ void* adev_init(int out_samprate, int out_chnum, int out_frmsize, int out_frmnum
         wfx.nAvgBytesPerSec = wfx.nBlockAlign * wfx.nSamplesPerSec;
         result = waveOutOpen(&dev->hWaveOut, WAVE_MAPPER, &wfx, (DWORD_PTR)waveOutProc, (DWORD_PTR)dev, CALLBACK_FUNCTION);
         if (result != MMSYSERR_NOERROR) {
-            adev_free(dev); dev = NULL;
+            adev_exit(dev); dev = NULL;
         }
 
         dev->sWaveOutHdr = (WAVEHDR*)(dev + 1);
         for (i = 0; i < out_frmnum; i++) {
-            dev->sWaveOutHdr[i].dwBufferLength = out_frmsize * sizeof(int16_t) * out_chnum;
-            dev->sWaveOutHdr[i].lpData         = (LPSTR)(dev + 1) + out_frmnum * sizeof(WAVEHDR) + i * out_frmsize * sizeof(int16_t) * out_chnum;
+            dev->sWaveOutHdr[i].dwUser = (DWORD_PTR)(out_frmsize * sizeof(int16_t) * out_chnum);
+            dev->sWaveOutHdr[i].lpData = (LPSTR)(dev + 1) + out_frmnum * sizeof(WAVEHDR) + i * out_frmsize * sizeof(int16_t) * out_chnum;
             waveOutPrepareHeader(dev->hWaveOut, &dev->sWaveOutHdr[i], sizeof(WAVEHDR));
         }
 
@@ -64,9 +64,9 @@ void* adev_init(int out_samprate, int out_chnum, int out_frmsize, int out_frmnum
     return dev;
 }
 
-void adev_free(void *ctxt)
+void adev_exit(void *ctx)
 {
-    ADEV *dev = (ADEV*)ctxt;
+    ADEV *dev = (ADEV*)ctx;
     if (dev) {
         int  i;
         waveOutReset(dev->hWaveOut);
@@ -79,13 +79,14 @@ void adev_free(void *ctxt)
     }
 }
 
-int adev_play(void *ctxt, void *buf, int len, int waitms)
+int adev_play(void *ctx, void *buf, int len, int waitms)
 {
-    ADEV *dev = (ADEV*)ctxt;
+    ADEV *dev = (ADEV*)ctx;
     int   ret = -1;
     if (dev) {
         if (WAIT_OBJECT_0 != WaitForSingleObject(dev->hWaveOutSem, waitms)) goto done;
-        memcpy(dev->sWaveOutHdr[dev->nWaveOutTail].lpData, buf, MIN((int)dev->sWaveOutHdr[dev->nWaveOutTail].dwBufferLength, len));
+        dev->sWaveOutHdr[dev->nWaveOutTail].dwBufferLength = MIN((int)dev->sWaveOutHdr[dev->nWaveOutTail].dwUser, len);
+        memcpy(dev->sWaveOutHdr[dev->nWaveOutTail].lpData, buf, dev->sWaveOutHdr[dev->nWaveOutTail].dwBufferLength);
         waveOutWrite(dev->hWaveOut, &dev->sWaveOutHdr[dev->nWaveOutTail], sizeof(WAVEHDR));
         if (++dev->nWaveOutTail == dev->nWaveOutBufn) dev->nWaveOutTail = 0;
         ret = 0;
@@ -93,3 +94,15 @@ int adev_play(void *ctxt, void *buf, int len, int waitms)
 done:
     return ret;
 }
+
+void adev_set(void *ctx, char *name, void *data)
+{
+    ADEV *dev = (ADEV*)ctx;
+    if (dev && name) {
+        if      (strcmp(name, "pause" ) == 0) waveOutPause  (dev->hWaveOut);
+        else if (strcmp(name, "resume") == 0) waveOutRestart(dev->hWaveOut);
+        else if (strcmp(name, "reset" ) == 0) waveOutReset  (dev->hWaveOut);
+    }
+}
+
+void* adev_get(void *ctx, char *name) {}

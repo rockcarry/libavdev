@@ -6,6 +6,7 @@
 *.log
 *.m4
 *.o
+*.pc
 config.h*
 config.guess
 config.status
