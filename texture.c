@@ -265,7 +265,7 @@ int texture_save(TEXTURE *t, char *file)
     return -1;
 }
 
-void texture_lock  (TEXTURE *t) { if (t && t->lock  ) t->lock  (t); }
+int  texture_lock  (TEXTURE *t) { return (t && t->lock) ? t->lock(t) : -1; }
 void texture_unlock(TEXTURE *t) { if (t && t->unlock) t->unlock(t); }
 
 void texture_setcolor(TEXTURE *t, int x, int y, uint32_t c)

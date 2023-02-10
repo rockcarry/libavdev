@@ -156,8 +156,10 @@ typedef struct {
     #define FLAG_INITED (1 << 1)
     #define FLAG_CLOSED (1 << 2)
     #define FLAG_NOSHOW (1 << 3)
+    #define FLAG_LOCKED (1 << 4)
     uint32_t  flags;
-    pthread_t hthread;
+    pthread_mutex_t lock;
+    pthread_t    hthread;
 
     PFN_VDEV_MSG_CB callback;
     void           *cbctx;
@@ -217,13 +219,19 @@ static int init_free_for_ddraw_gdi(VDEV *vdev, int init)
         }
     }
 
+    pthread_mutex_lock(&vdev->lock);
     vdev->flags |= FLAG_INITED;
+    pthread_mutex_unlock(&vdev->lock);
     return 0;
 }
 
-static void vdev_texture_lock(TEXTURE *t)
+static int vdev_texture_lock(TEXTURE *t)
 {
     VDEV *vdev = container_of(t, VDEV, texture);
+    if (vdev->flags & FLAG_CLOSED) return -1;
+    pthread_mutex_lock(&vdev->lock);
+    vdev->flags |= FLAG_LOCKED;
+    pthread_mutex_unlock(&vdev->lock);
     if (vdev->flags & FLAG_DDRAW) {
         DDSURFACEDESC ddsd = { sizeof(ddsd) };
         vdev->lpDDSPrimary->pVtbl->Lock(vdev->lpDDSPrimary, NULL, &ddsd, DDLOCK_WAIT, NULL);
@@ -231,12 +239,12 @@ static void vdev_texture_lock(TEXTURE *t)
         t->h      = ddsd.dwHeight;
         t->data   = ddsd.lpSurface;
     }
+    return 0;
 }
 
 static void vdev_texture_unlock(TEXTURE *t)
 {
     VDEV *vdev = container_of(t, VDEV, texture);
-    if (vdev->flags & FLAG_CLOSED) return;
     if (vdev->flags & FLAG_DDRAW) {
         vdev->lpDDSPrimary->pVtbl->Unlock(vdev->lpDDSPrimary, NULL);
         t->data = NULL;
@@ -249,6 +257,9 @@ static void vdev_texture_unlock(TEXTURE *t)
         InvalidateRect(vdev->hwnd, NULL, FALSE);
 #endif
     }
+    pthread_mutex_lock(&vdev->lock);
+    vdev->flags &= ~FLAG_LOCKED;
+    pthread_mutex_unlock(&vdev->lock);
 }
 
 static LRESULT CALLBACK VDEV_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -333,9 +344,12 @@ static void* vdev_thread_proc(void *param)
     }
 
 done:
+    pthread_mutex_lock(&vdev->lock);
+    vdev->flags |= FLAG_CLOSED;
+    pthread_mutex_unlock(&vdev->lock);
+    while (vdev->flags & FLAG_LOCKED) usleep(10 * 1000);
     init_free_for_ddraw_gdi(vdev, 0);
     if (vdev->hwnd) { DestroyWindow(vdev->hwnd); vdev->hwnd = NULL; }
-    vdev->flags |= FLAG_CLOSED;
     return NULL;
 }
 
@@ -354,6 +368,7 @@ void* vdev_init(int w, int h, char *params, PFN_VDEV_MSG_CB callback, void *cbct
     vdev->texture.h      = h;
     vdev->texture.lock   = vdev_texture_lock;
     vdev->texture.unlock = vdev_texture_unlock;
+    pthread_mutex_init(&vdev->lock, NULL);
     pthread_create(&vdev->hthread, NULL, vdev_thread_proc, vdev);
     while (!(vdev->flags & (FLAG_INITED | FLAG_CLOSED))) usleep(100 * 1000);
     if (vdev->flags & FLAG_CLOSED) {
@@ -369,6 +384,7 @@ void vdev_exit(void *ctx, int close)
     if (!vdev) return;
     if (close && vdev->hwnd) PostMessage(vdev->hwnd, WM_CLOSE, 0, 0);
     if (vdev->hthread) pthread_join(vdev->hthread, NULL);
+    if (vdev->lock) pthread_mutex_destroy(&vdev->lock);
     free(vdev);
 }
 
