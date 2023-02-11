@@ -165,8 +165,8 @@ typedef struct {
     void           *cbctx;
 } VDEV;
 
-#define TINYGL_WND_CLASS TEXT("TinyGLWndClass")
-#define TINYGL_WND_NAME  TEXT("TinyGLWindow"  )
+#define VDEV_WND_CLASS TEXT("VDevWndClass")
+#define VDEV_WND_NAME  TEXT("VDevWindow"  )
 
 static int init_free_for_ddraw_gdi(VDEV *vdev, int init)
 {
@@ -310,10 +310,10 @@ static void* vdev_thread_proc(void *param)
     wc.hIcon         = LoadIcon  (NULL, IDI_APPLICATION);
     wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)GetStockObject(NULL_BRUSH);
-    wc.lpszClassName = TINYGL_WND_CLASS;
+    wc.lpszClassName = VDEV_WND_CLASS;
     if (!RegisterClass(&wc)) return NULL;
 
-    vdev->hwnd = CreateWindow(TINYGL_WND_CLASS, TINYGL_WND_NAME, (vdev->flags & FLAG_DDRAW) ? WS_POPUP : (WS_SYSMENU|WS_MINIMIZEBOX),
+    vdev->hwnd = CreateWindow(VDEV_WND_CLASS, VDEV_WND_NAME, (vdev->flags & FLAG_DDRAW) ? WS_POPUP : (WS_SYSMENU|WS_MINIMIZEBOX),
         CW_USEDEFAULT, CW_USEDEFAULT, vdev->texture.w, vdev->texture.h,
         NULL, NULL, wc.hInstance, NULL);
     if (!vdev->hwnd) goto done;
