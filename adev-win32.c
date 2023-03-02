@@ -172,13 +172,13 @@ int adev_record(void *ctx, int start, int rec_samprate, int rec_chnum, int rec_f
 
 handle_stop:
     if (!start && dev->hWaveRec) {
+        waveInStop(dev->hWaveRec);
         if (dev->sWaveRecHdr) {
             for (i = 0; i < dev->nWaveRecBufn; i++) {
                 if (dev->sWaveRecHdr[i].lpData) waveInUnprepareHeader(dev->hWaveRec, &dev->sWaveRecHdr[i], sizeof(WAVEHDR));
             }
             free(dev->sWaveRecHdr);
         }
-        waveInStop (dev->hWaveRec);
         waveInClose(dev->hWaveRec);
         dev->hWaveRec     = NULL;
         dev->sWaveRecHdr  = NULL;
