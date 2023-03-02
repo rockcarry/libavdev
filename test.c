@@ -28,6 +28,50 @@ int main(void)
 }
 #endif
 
+#ifdef _TEST_RECORD_
+static void my_adev_callback(void *ctxt, int cmd, void *buf, int len)
+{
+    void    *vdev    = ctxt;
+    int16_t *pcm     = buf;
+    TEXTURE *texture = vdev ? vdev_get(vdev, "texture") : NULL;
+    switch (cmd) {
+    case ADEV_CMD_DATA_RECORD:
+#ifdef DEBUG
+        printf("record data, ctxt: %p, buf: %p, len: %d\n", ctxt, buf, len); fflush(stdout);
+#endif
+        if (texture && buf && len > 0) {
+            int lasty, cury, x, i;
+            if (0 == texture_lock(texture)) {
+                texture_fillrect(texture, 0, 0, texture->w, texture->h, 0);
+                lasty = pcm[0] * texture->h / 0x10000 + texture->h / 2;
+                for (x = 1; x < texture->w; x++) {
+                    i    = (len / sizeof(int16_t) - 1) * x / (texture->w - 1);
+                    cury = texture->h / 2 - pcm[i] * texture->h / 0x10000;
+                    texture_line(texture, x - 1, lasty, x, cury, RGB(0, 255, 0));
+                    lasty = cury;
+                }
+                texture_unlock(texture);
+            }
+        }
+        break;
+    }
+}
+
+int main(void)
+{
+    void *adev = adev_init(0, 0, 0, 0);
+    void *vdev = vdev_init(640, 480, NULL, NULL, NULL);
+
+    adev_set(adev, "callback", my_adev_callback);
+    adev_set(adev, "cbctx"   , vdev);
+    adev_record(adev, 1, 0, 0, 0, 0);
+
+    vdev_exit(vdev, 0);
+    adev_exit(adev);
+    return 0;
+}
+#endif
+
 #ifdef _TEST_VDEV_
 int main(void)
 {

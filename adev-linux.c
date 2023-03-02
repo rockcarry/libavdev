@@ -16,3 +16,8 @@ int adev_play(void *ctx, void *buf, int len, int waitms)
 void adev_set(void *ctx, char *name, void *data) {}
 
 void* adev_get(void *ctx, char *name) { return NULL; }
+
+int adev_record(void *ctx, int start, int rec_samprate, int rec_chnum, int rec_frmsize, int rec_frmnum)
+{
+    return 0;
+}

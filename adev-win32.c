@@ -1,4 +1,6 @@
 #include <stdint.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include <windows.h>
 #include "adev.h"
 #include "utils.h"
@@ -7,6 +9,12 @@
 #define DEF_OUT_CHANEL_NUM   1
 #define DEF_OUT_FRAME_SIZE   320
 #define DEF_OUT_FRAME_NUM    3
+
+#define DEF_REC_SAMPLE_RATE  8000
+#define DEF_REC_CHANEL_NUM   1
+#define DEF_REC_FRAME_SIZE   320
+#define DEF_REC_FRAME_NUM    3
+
 typedef struct {
     HWAVEOUT hWaveOut;
     WAVEHDR *sWaveOutHdr;
@@ -14,26 +22,48 @@ typedef struct {
     int      nWaveOutTail;
     int      nWaveOutBufn;
     HANDLE   hWaveOutSem ;
+
+    HWAVEIN  hWaveRec;
+    WAVEHDR *sWaveRecHdr;
+    int      nWaveRecBufn;
+
+    PFN_ADEV_CALLBACK callback;
+    void             *cbctx;
 } ADEV;
 
 static void CALLBACK waveOutProc(HWAVEOUT hwo, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2)
 {
-    ADEV *dev = (ADEV*)dwInstance;
+    ADEV    *dev = (ADEV*)dwInstance;
+    WAVEHDR *phdr= (WAVEHDR*)dwParam1;
     switch (uMsg) {
     case WOM_DONE:
+        if (dev->callback) dev->callback(dev->cbctx, ADEV_CMD_DATA_PLAY, phdr->lpData, phdr->dwBytesRecorded);
         if (++dev->nWaveOutHead == dev->nWaveOutBufn) dev->nWaveOutHead = 0;
         ReleaseSemaphore(dev->hWaveOutSem, 1, NULL);
         break;
     }
 }
 
+static BOOL CALLBACK waveRecProc(HWAVEIN hwi, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2)
+{
+    ADEV    *dev = (ADEV*)dwInstance;
+    WAVEHDR *phdr= (WAVEHDR*)dwParam1;
+    switch (uMsg) {
+    case WIM_DATA:
+        if (dev->callback) dev->callback(dev->cbctx, ADEV_CMD_DATA_RECORD, phdr->lpData, phdr->dwBytesRecorded);
+        waveInAddBuffer(hwi, phdr, sizeof(WAVEHDR));
+        break;
+    }
+    return TRUE;
+}
+
 void* adev_init(int out_samprate, int out_chnum, int out_frmsize, int out_frmnum)
 {
     ADEV *dev = NULL;
     out_samprate = out_samprate ? out_samprate : DEF_OUT_SAMPLE_RATE;
-    out_chnum    = out_chnum ? out_chnum : DEF_OUT_CHANEL_NUM;
-    out_frmsize  = out_frmsize ? out_frmsize : DEF_OUT_FRAME_SIZE;
-    out_frmnum   = out_frmnum ? out_frmnum : DEF_OUT_FRAME_NUM;
+    out_chnum    = out_chnum    ? out_chnum    : DEF_OUT_CHANEL_NUM;
+    out_frmsize  = out_frmsize  ? out_frmsize  : DEF_OUT_FRAME_SIZE;
+    out_frmnum   = out_frmnum   ? out_frmnum   : DEF_OUT_FRAME_NUM;
     dev = calloc(1, sizeof(ADEV) + out_frmnum * (sizeof(WAVEHDR) + out_frmsize * sizeof(int16_t) * out_chnum));
     if (dev) {
         WAVEFORMATEX wfx = {0};
@@ -75,6 +105,7 @@ void adev_exit(void *ctx)
         }
         waveOutClose(dev->hWaveOut);
         CloseHandle (dev->hWaveOutSem);
+        adev_record(dev, 0, 0, 0, 0, 0);
         free(dev);
     }
 }
@@ -95,13 +126,76 @@ done:
     return ret;
 }
 
+int adev_record(void *ctx, int start, int rec_samprate, int rec_chnum, int rec_frmsize, int rec_frmnum)
+{
+    int   ret = -1, i;
+    ADEV *dev = (ADEV*)ctx;
+    if (!dev) return -1;
+
+    if (start && !dev->hWaveRec) {
+        rec_samprate = rec_samprate ? rec_samprate : DEF_REC_SAMPLE_RATE;
+        rec_chnum    = rec_chnum    ? rec_chnum    : DEF_REC_CHANEL_NUM;
+        rec_frmsize  = rec_frmsize  ? rec_frmsize  : DEF_REC_FRAME_SIZE;
+        rec_frmnum   = rec_frmnum   ? rec_frmnum   : DEF_REC_FRAME_NUM;
+
+        WAVEFORMATEX wfx = {0};
+        DWORD        result;
+        wfx.cbSize          = sizeof(wfx);
+        wfx.wFormatTag      = WAVE_FORMAT_PCM;
+        wfx.wBitsPerSample  = 16;
+        wfx.nSamplesPerSec  = rec_samprate;
+        wfx.nChannels       = rec_chnum;
+        wfx.nBlockAlign     = wfx.nChannels * wfx.wBitsPerSample / 8;
+        wfx.nAvgBytesPerSec = wfx.nBlockAlign * wfx.nSamplesPerSec;
+        result = waveInOpen(&dev->hWaveRec, WAVE_MAPPER, &wfx, (DWORD_PTR)waveRecProc, (DWORD_PTR)dev, CALLBACK_FUNCTION);
+        if (result != MMSYSERR_NOERROR) {
+            printf("failed to open wavein device !\n");
+            start = 0; goto handle_stop;
+        }
+
+        dev->nWaveRecBufn = rec_frmnum;
+        dev->sWaveRecHdr  = malloc(rec_frmnum * (sizeof(WAVEHDR) + rec_frmsize * sizeof(int16_t) * rec_chnum));
+        if (!dev->sWaveRecHdr) {
+            printf("failed to allocate wavehdr for wavein !\n");
+            start = 0; goto handle_stop;
+        }
+
+        for (i = 0; i < rec_frmnum; i++) {
+            dev->sWaveRecHdr[i].dwBufferLength = (DWORD_PTR)(rec_frmsize * sizeof(int16_t) * rec_chnum);
+            dev->sWaveRecHdr[i].lpData         = (LPSTR)dev->sWaveRecHdr + rec_frmnum * sizeof(WAVEHDR) + i * rec_frmsize * sizeof(int16_t) * rec_chnum;
+            waveInPrepareHeader(dev->hWaveRec, &dev->sWaveRecHdr[i], sizeof(WAVEHDR));
+            waveInAddBuffer    (dev->hWaveRec, &dev->sWaveRecHdr[i], sizeof(WAVEHDR));
+        }
+        waveInStart(dev->hWaveRec);
+        ret = 0;
+    }
+
+handle_stop:
+    if (!start && dev->hWaveRec) {
+        if (dev->sWaveRecHdr) {
+            for (i = 0; i < dev->nWaveRecBufn; i++) {
+                if (dev->sWaveRecHdr[i].lpData) waveInUnprepareHeader(dev->hWaveRec, &dev->sWaveRecHdr[i], sizeof(WAVEHDR));
+            }
+            free(dev->sWaveRecHdr);
+        }
+        waveInStop (dev->hWaveRec);
+        waveInClose(dev->hWaveRec);
+        dev->hWaveRec     = NULL;
+        dev->sWaveRecHdr  = NULL;
+        dev->nWaveRecBufn = 0;
+    }
+    return ret;
+}
+
 void adev_set(void *ctx, char *name, void *data)
 {
     ADEV *dev = (ADEV*)ctx;
     if (dev && name) {
-        if      (strcmp(name, "pause" ) == 0) waveOutPause  (dev->hWaveOut);
-        else if (strcmp(name, "resume") == 0) waveOutRestart(dev->hWaveOut);
-        else if (strcmp(name, "reset" ) == 0) waveOutReset  (dev->hWaveOut);
+        if      (strcmp(name, "pause"   ) == 0) waveOutPause  (dev->hWaveOut);
+        else if (strcmp(name, "resume"  ) == 0) waveOutRestart(dev->hWaveOut);
+        else if (strcmp(name, "reset"   ) == 0) waveOutReset  (dev->hWaveOut);
+        else if (strcmp(name, "callback") == 0) dev->callback = data;
+        else if (strcmp(name, "cbctx"   ) == 0) dev->cbctx    = data;
     }
 }
 
