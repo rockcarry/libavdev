@@ -5,11 +5,21 @@ nobase_libavdevinclude_HEADERS = texture.h adev.h vdev.h
 noinst_HEADERS = utils.h
 
 lib_LTLIBRARIES = libavdev.la
-libavdev_la_SOURCES = utils.c texture.c adev.c vdev.c
+libavdev_la_SOURCES = utils.c texture.c
 libavdev_la_LDFLAGS = -no-undefined
 
+CFLAGS += -Wall -Werror
+
 if WIN32
-libavdev_la_LIBADD  = -lwinmm -lgdi32
+CFLAGS += -DWIN32
+libavdev_la_SOURCES += adev-win32.c vdev-win32.c
+libavdev_la_LIBADD = -lwinmm -lgdi32
+endif
+
+if LINUX
+libavdev_la_SOURCES += adev-linux.c vdev-linux.c
+CFLAGS += -DLINUX
+libavdev_la_LIBADD = -lm
 endif
 
 pkgconfigdir = $(libdir)/pkgconfig

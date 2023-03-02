@@ -1,7 +1,7 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ([2.71])
+AC_PREREQ([2.69])
 AC_INIT([libavdev], [1.0.0], [chenk@apical.com.cn])
 
 AC_CONFIG_SRCDIR([test.c])
@@ -43,10 +43,11 @@ case $host_os in
     AC_CHECK_LIB([winmm], [waveOutOpen])
     AC_CHECK_LIB([gdi32], [CreateWindow])
   ;;
-  * )
-    win32="no"
+  *linux*)
+    linux="yes"
   ;;
 esac
 AM_CONDITIONAL([WIN32], [test "x$win32" = "xyes"])
+AM_CONDITIONAL([LINUX], [test "x$linux" = "xyes"])
 
 AC_OUTPUT

@@ -105,4 +105,4 @@ void adev_set(void *ctx, char *name, void *data)
     }
 }
 
-void* adev_get(void *ctx, char *name) {}
+void* adev_get(void *ctx, char *name) { return NULL; }
