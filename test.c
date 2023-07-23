@@ -1,8 +1,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <math.h>
-#include "texture.h"
 #include "adev.h"
 #include "vdev.h"
 
@@ -29,29 +29,62 @@ int main(void)
 #endif
 
 #ifdef _TEST_RECORD_
+void bmp_setpixel(BMP *pb, int x, int y, int c)
+{
+    if (x < 0 || x >= pb->width || y < 0 || y >= pb->height) return;
+    *(uint32_t*)(pb->pdata + y * pb->stride + x * sizeof(uint32_t)) = c;
+}
+
+static void bmp_line(BMP *pb, int x1, int y1, int x2, int y2, int c)
+{
+    int dx, dy, d, e;
+    if (!pb) return;
+
+    dx = abs(x1 - x2);
+    dy = abs(y1 - y2);
+    if ((dx >= dy && x1 > x2) || (dx < dy && y1 > y2)) {
+        d = x1; x1 = x2; x2 = d;
+        d = y1; y1 = y2; y2 = d;
+    }
+    if (dx >= dy) {
+        d = y2 - y1 > 0 ? 1 : -1;
+        for (e = dx/2; x1 < x2; x1++, e += dy) {
+            if (e >= dx) e -= dx, y1 += d;
+            bmp_setpixel(pb, x1, y1, c);
+        }
+    } else {
+        d = x2 - x1 > 0 ? 1 : -1;
+        for (e = dy/2; y1 < y2; y1++, e += dx) {
+            if (e >= dy) e -= dy, x1 += d;
+            bmp_setpixel(pb, x1, y1, c);
+        }
+    }
+    bmp_setpixel(pb, x2, y2, c);
+}
+
 static void my_adev_callback(void *ctxt, int cmd, void *buf, int len)
 {
-    void    *vdev    = ctxt;
-    int16_t *pcm     = buf;
-    TEXTURE *texture = vdev ? vdev_get(vdev, "texture") : NULL;
+    void    *vdev = ctxt;
+    int16_t *pcm  = buf;
+    BMP     *bmp  = NULL;
     switch (cmd) {
     case ADEV_CMD_DATA_RECORD:
 #ifdef DEBUG
         printf("record data, ctxt: %p, buf: %p, len: %d\n", ctxt, buf, len); fflush(stdout);
 #endif
-        if (texture && buf && len > 0) {
-            int lasty, cury, x, i;
-            if (0 == texture_lock(texture)) {
-                texture_fillrect(texture, 0, 0, texture->w, texture->h, 0);
-                lasty = pcm[0] * texture->h / 0x10000 + texture->h / 2;
-                for (x = 1; x < texture->w; x++) {
-                    i    = (len / sizeof(int16_t) - 1) * x / (texture->w - 1);
-                    cury = texture->h / 2 - pcm[i] * texture->h / 0x10000;
-                    texture_line(texture, x - 1, lasty, x, cury, RGB(0, 255, 0));
+        if ((bmp = vdev_lock(vdev))) {
+            if (buf && len > 0) {
+                int lasty, cury, x, i;
+                memset(bmp->pdata, 0, bmp->height * bmp->stride);
+                lasty = pcm[0] * bmp->height / 0x10000 + bmp->height / 2;
+                for (x = 1; x < bmp->width; x++) {
+                    i    = (len / sizeof(int16_t) - 1) * x / (bmp->width - 1);
+                    cury = bmp->height / 2 - pcm[i] * bmp->height / 0x10000;
+                    bmp_line(bmp, x - 1, lasty, x, cury, 0x00FF00);
                     lasty = cury;
                 }
-                texture_unlock(texture);
             }
+            vdev_unlock(vdev);
         }
         break;
     }
@@ -75,16 +108,16 @@ int main(void)
 #ifdef _TEST_VDEV_
 int main(void)
 {
-    void    *vdev    = vdev_init(640, 480, "inithidden", NULL, NULL);
-    TEXTURE *texture = vdev_get(vdev, "texture");
-    int      i, j;
-    if (0 == texture_lock(texture)) {
-        for (i = 0; i < texture->h; i++) {
-            for (j = 0; j < texture->w; j++) {
-                texture_setcolor(texture, j, i, RGB(i, j, i));
+    void *vdev = vdev_init(640, 480, "inithidden", NULL, NULL);
+    BMP  *bmp  = NULL;
+    int   i, j;
+    if ((bmp = vdev_lock(vdev))) {
+        for (i = 0; i < bmp->height; i++) {
+            for (j = 0; j < bmp->width; j++) {
+                *(uint32_t*)(bmp->pdata + i * bmp->stride + j * sizeof(uint32_t)) = (i << 16) | (j << 8) | (i << 0);
             }
         }
-        texture_unlock(texture);
+        vdev_unlock(vdev);
     }
     vdev_set(vdev, "show", NULL);
     vdev_exit(vdev, 0);

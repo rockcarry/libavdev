@@ -1,11 +1,11 @@
 AUTOMAKE_OPTIONS = foreign
 
 libavdevincludedir = $(includedir)/libavdev
-nobase_libavdevinclude_HEADERS = texture.h adev.h vdev.h
+nobase_libavdevinclude_HEADERS = adev.h vdev.h
 noinst_HEADERS = utils.h
 
 lib_LTLIBRARIES = libavdev.la
-libavdev_la_SOURCES = utils.c texture.c
+libavdev_la_SOURCES = utils.c
 libavdev_la_LDFLAGS = -no-undefined
 
 CFLAGS += -Wall -Werror

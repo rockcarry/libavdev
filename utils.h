@@ -13,8 +13,10 @@
 #define offset_of(type, member) ((size_t)&((type*)0)->member)
 #define container_of(ptr, type, member) (type*)((char*)(ptr) - offset_of(type, member))
 
-uint32_t get_tick_count(void);
+#define get_tick_count  libavdev_get_tick_count
+#define frame_rate_ctrl libavdev_frame_rate_ctrl
 
+uint32_t get_tick_count(void);
 int frame_rate_ctrl(uint32_t frc[4], int frate);
 
 #endif
