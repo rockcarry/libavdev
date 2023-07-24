@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <unistd.h>
 #include "adev.h"
 #include "vdev.h"
 
@@ -120,6 +121,12 @@ int main(void)
         vdev_unlock(vdev);
     }
     vdev_set(vdev, "show", NULL);
+    while (1) {
+        char *state = (char*)vdev_get(vdev, "state", NULL);
+        if (strcmp(state, "closed") == 0) break;
+        if (vdev_get(vdev, "key_A", NULL)) { printf("a pressed !\n"); fflush(stdout); }
+        usleep(20 * 1000);
+    }
     vdev_exit(vdev, 0);
     return 0;
 }

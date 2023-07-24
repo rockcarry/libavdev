@@ -142,10 +142,14 @@ typedef void*(WINAPI *PFN_DirectDrawCreate)(void *guid, void **lpddraw, void *iu
 //-- directdraw types and defines
 
 typedef struct {
-    HWND    hwnd;
-    HDC     hdc;
-    HBITMAP hbmp;
-    BMP     tbmp;
+    HWND     hwnd;
+    HDC      hdc;
+    HBITMAP  hbmp;
+    BMP      tbmp;
+    uint32_t keybits[8];
+    int32_t  mousex;
+    int32_t  mousey;
+    int32_t  mousebtns;
 
     HMODULE             hDDrawDll;
     IDirectDraw        *lpDirectDraw;
@@ -238,12 +242,25 @@ static LRESULT CALLBACK VDEV_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
     case WM_KEYUP: case WM_KEYDOWN: case WM_SYSKEYUP: case WM_SYSKEYDOWN:
         if (vdev->callback) ret = vdev->callback(vdev->cbctx, VDEV_MSG_KEY_EVENT, uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN, wParam, NULL);
         if (ret != 0 && uMsg == WM_KEYDOWN && wParam == VK_ESCAPE) PostQuitMessage(0);
+        int idx = ((BYTE)wParam) / 32;
+        int bit = ((BYTE)wParam) % 32;
+        if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) vdev->keybits[idx] |= (1 << bit);
+        else vdev->keybits[idx] &= ~(1 << bit);
         return 0;
-    case WM_MOUSEMOVE: case WM_MOUSEWHEEL:
-    case WM_LBUTTONUP: case WM_LBUTTONDOWN: case WM_RBUTTONUP: case WM_RBUTTONDOWN: case WM_MBUTTONUP: case WM_MBUTTONDOWN:
+    case WM_MOUSEMOVE:
+        vdev->mousex = (int32_t)((lParam >> 0) & 0xFFFF);
+        vdev->mousey = (int32_t)((lParam >>16) & 0xFFFF);
         return 0;
+    case WM_MOUSEWHEEL:
+        return 0;
+    case WM_LBUTTONUP  : vdev->mousebtns &= ~(1 << 0); return 0;
+    case WM_LBUTTONDOWN: vdev->mousebtns |=  (1 << 0); return 0;
+    case WM_MBUTTONUP  : vdev->mousebtns &= ~(1 << 1); return 0;
+    case WM_MBUTTONDOWN: vdev->mousebtns |=  (1 << 1); return 0;
+    case WM_RBUTTONUP  : vdev->mousebtns &= ~(1 << 2); return 0;
+    case WM_RBUTTONDOWN: vdev->mousebtns |=  (1 << 2); return 0;
     case WM_PAINT:
-        if (vdev->flags & FLAG_DDRAW) return DefWindowProc(hwnd, uMsg, wParam, lParam);
+        if (vdev->flags & FLAG_DDRAW) break;
         hdc = BeginPaint(hwnd, &ps);
         BitBlt(hdc, ps.rcPaint.left, ps.rcPaint.top,
             ps.rcPaint.right  - ps.rcPaint.left,
@@ -254,9 +271,8 @@ static LRESULT CALLBACK VDEV_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
-    default:
-        return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
+    return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
 static void* vdev_thread_proc(void *param)
@@ -396,11 +412,13 @@ void vdev_set(void *ctx, char *name, void *data)
     }
 }
 
-void* vdev_get(void *ctx, char *name)
+long vdev_get(void *ctx, char *name, void *data)
 {
     VDEV *vdev = (VDEV*)ctx;
-    if (!ctx || !name) return NULL;
-    if (strcmp(name, "state"  ) == 0) return (vdev->flags & FLAG_CLOSED) ? "closed" : "running";
-    return NULL;
+    if (!ctx || !name) return 0;
+    if (strcmp(name, "state") == 0   ) return (long)((vdev->flags & FLAG_CLOSED) ? "closed" : "running");
+    if (strstr(name, "key_" ) == name) return !!(vdev->keybits[(unsigned)name[4] / 32] & (1 << ((unsigned)name[4] % 32)));
+    if (strcmp(name, "mouse") == 0   ) return (long)&vdev->mousex;
+    return 0;
 }
 

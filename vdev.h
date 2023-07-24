@@ -32,6 +32,6 @@ void  vdev_exit  (void *ctx, int close);
 BMP * vdev_lock  (void *ctx);
 void  vdev_unlock(void *ctx);
 void  vdev_set   (void *ctx, char *name, void *data);
-void* vdev_get   (void *ctx, char *name);
+long  vdev_get   (void *ctx, char *name, void *data);
 
 #endif
