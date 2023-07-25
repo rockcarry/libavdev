@@ -20,11 +20,12 @@ typedef struct {
 #endif
 
 enum {
-    VDEV_MSG_KEY_EVENT = 1,
-    VDEV_MSG_MOUSE_EVENT,
+    DEV_MSG_VDEV_CLOSE ,
+    DEV_MSG_KEY_EVENT  ,
+    DEV_MSG_MOUSE_EVENT,
 };
 
-typedef int (*PFN_VDEV_MSG_CB)(void *cbctx, int msg, uint32_t param1, uint32_t param2, void *param3);
+typedef int (*PFN_VDEV_MSG_CB)(void *cbctx, int msg, uint32_t param1, uint32_t param2, uint32_t param3);
 
 // params: "fullscreen" - use directdraw fullscreen mode, "inithidden" - init window but not show it
 void* vdev_init  (int w, int h, char *params, PFN_VDEV_MSG_CB callback, void *cbctx);

@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include "adev.h"
 #include "vdev.h"
+#include "idev.h"
 
 #ifdef _TEST_ADEV_
 static void gen_sin_wav(int16_t *pcm, int n, int samprate, int freq)
@@ -110,6 +111,7 @@ int main(void)
 int main(void)
 {
     void *vdev = vdev_init(640, 480, "inithidden", NULL, NULL);
+    void *idev = (void*)vdev_get(vdev, "idev", NULL);
     BMP  *bmp  = NULL;
     int   i, j;
     if ((bmp = vdev_lock(vdev))) {
@@ -124,7 +126,7 @@ int main(void)
     while (1) {
         char *state = (char*)vdev_get(vdev, "state", NULL);
         if (strcmp(state, "closed") == 0) break;
-        if (vdev_get(vdev, "key_A", NULL)) { printf("a pressed !\n"); fflush(stdout); }
+        if (idev_getkey(idev, 'A')) { printf("a pressed !\n"); fflush(stdout); }
         usleep(20 * 1000);
     }
     vdev_exit(vdev, 0);

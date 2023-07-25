@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <windows.h>
 #include <pthread.h>
+#include "idev.h"
 #include "vdev.h"
 #include "utils.h"
 
@@ -146,10 +147,7 @@ typedef struct {
     HDC      hdc;
     HBITMAP  hbmp;
     BMP      tbmp;
-    uint32_t keybits[8];
-    int32_t  mousex;
-    int32_t  mousey;
-    int32_t  mousebtns;
+    IDEV     idev;
 
     HMODULE             hDDrawDll;
     IDirectDraw        *lpDirectDraw;
@@ -237,28 +235,29 @@ static LRESULT CALLBACK VDEV_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
 #else
     VDEV *vdev = (VDEV*)GetWindowLong(hwnd, GWL_USERDATA);
 #endif
+    IDEV *idev = &vdev->idev;
     int  ret = -1;
     switch (uMsg) {
     case WM_KEYUP: case WM_KEYDOWN: case WM_SYSKEYUP: case WM_SYSKEYDOWN:
-        if (vdev->callback) ret = vdev->callback(vdev->cbctx, VDEV_MSG_KEY_EVENT, uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN, wParam, NULL);
+        if (idev->callback) ret = idev->callback(idev->cbctx, DEV_MSG_KEY_EVENT, uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN, wParam, 0);
         if (ret != 0 && uMsg == WM_KEYDOWN && wParam == VK_ESCAPE) PostQuitMessage(0);
         int idx = ((BYTE)wParam) / 32;
         int bit = ((BYTE)wParam) % 32;
-        if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) vdev->keybits[idx] |= (1 << bit);
-        else vdev->keybits[idx] &= ~(1 << bit);
+        if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) idev->key_bits[idx] |= (1 << bit);
+        else idev->key_bits[idx] &= ~(1 << bit);
         return 0;
     case WM_MOUSEMOVE:
-        vdev->mousex = (int32_t)((lParam >> 0) & 0xFFFF);
-        vdev->mousey = (int32_t)((lParam >>16) & 0xFFFF);
+        idev->mouse_x = (int32_t)((lParam >> 0) & 0xFFFF);
+        idev->mouse_y = (int32_t)((lParam >>16) & 0xFFFF);
         return 0;
     case WM_MOUSEWHEEL:
         return 0;
-    case WM_LBUTTONUP  : vdev->mousebtns &= ~(1 << 0); return 0;
-    case WM_LBUTTONDOWN: vdev->mousebtns |=  (1 << 0); return 0;
-    case WM_MBUTTONUP  : vdev->mousebtns &= ~(1 << 1); return 0;
-    case WM_MBUTTONDOWN: vdev->mousebtns |=  (1 << 1); return 0;
-    case WM_RBUTTONUP  : vdev->mousebtns &= ~(1 << 2); return 0;
-    case WM_RBUTTONDOWN: vdev->mousebtns |=  (1 << 2); return 0;
+    case WM_LBUTTONUP  : idev->mouse_btns &= ~(1 << 0); return 0;
+    case WM_LBUTTONDOWN: idev->mouse_btns |=  (1 << 0); return 0;
+    case WM_MBUTTONUP  : idev->mouse_btns &= ~(1 << 1); return 0;
+    case WM_MBUTTONDOWN: idev->mouse_btns |=  (1 << 1); return 0;
+    case WM_RBUTTONUP  : idev->mouse_btns &= ~(1 << 2); return 0;
+    case WM_RBUTTONDOWN: idev->mouse_btns |=  (1 << 2); return 0;
     case WM_PAINT:
         if (vdev->flags & FLAG_DDRAW) break;
         hdc = BeginPaint(hwnd, &ps);
@@ -270,6 +269,7 @@ static LRESULT CALLBACK VDEV_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         return 0;
     case WM_DESTROY:
         PostQuitMessage(0);
+        if (vdev->callback) vdev->callback(vdev->cbctx, DEV_MSG_VDEV_CLOSE, 0, 0, 0);
         return 0;
     }
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -416,9 +416,7 @@ long vdev_get(void *ctx, char *name, void *data)
 {
     VDEV *vdev = (VDEV*)ctx;
     if (!ctx || !name) return 0;
-    if (strcmp(name, "state") == 0   ) return (long)((vdev->flags & FLAG_CLOSED) ? "closed" : "running");
-    if (strstr(name, "key_" ) == name) return !!(vdev->keybits[(unsigned)name[4] / 32] & (1 << ((unsigned)name[4] % 32)));
-    if (strcmp(name, "mouse") == 0   ) return (long)&vdev->mousex;
+    if (strcmp(name, "state") == 0) return (long)((vdev->flags & FLAG_CLOSED) ? "closed" : "running");
+    if (strcmp(name, "idev" ) == 0) return (long)&vdev->idev;
     return 0;
 }
-
