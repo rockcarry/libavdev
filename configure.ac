@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.69])
-AC_INIT([libavdev], [1.0.0], [chenk@apical.com.cn])
+AC_INIT([libavdev], [1.1.0], [chenk@apical.com.cn])
 
 AC_CONFIG_SRCDIR([test.c])
 AC_CONFIG_HEADERS([config.h])
@@ -32,7 +32,7 @@ AC_TYPE_UINT8_T
 
 # Checks for library functions.
 AC_FUNC_MALLOC
-AC_CHECK_FUNCS([clock_gettime strcasecmp])
+AC_CHECK_FUNCS([clock_gettime memset])
 
 # Checks for build & host enviroment
 AC_CANONICAL_BUILD

@@ -31,7 +31,7 @@ int main(void)
 #endif
 
 #ifdef _TEST_RECORD_
-void bmp_setpixel(BMP *pb, int x, int y, int c)
+static void bmp_setpixel(BMP *pb, int x, int y, int c)
 {
     if (x < 0 || x >= pb->width || y < 0 || y >= pb->height) return;
     *(uint32_t*)(pb->pdata + y * pb->stride + x * sizeof(uint32_t)) = c;
