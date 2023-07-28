@@ -34,6 +34,13 @@ AC_TYPE_UINT8_T
 AC_FUNC_MALLOC
 AC_CHECK_FUNCS([clock_gettime memset])
 
+# Checks for Optional Features
+AC_ARG_ENABLE(debug, [AS_HELP_STRING([--enable-debug], [enable debug mode [default=no]])], [], [debug=no])
+AM_CONDITIONAL([ENABLE_DEBUG], [test x"$enable_debug" = x"yes"])
+
+AC_ARG_ENABLE(tests, [AS_HELP_STRING([--enable-tests], [enable test programs [default=no]])], [], [tests=no])
+AM_CONDITIONAL([ENABLE_TESTS], [test x"$enable_tests" = x"yes"])
+
 # Checks for build & host enviroment
 AC_CANONICAL_BUILD
 AC_CANONICAL_HOST

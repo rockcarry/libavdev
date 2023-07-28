@@ -8,7 +8,7 @@ lib_LTLIBRARIES = libavdev.la
 libavdev_la_SOURCES = utils.c idev.c
 libavdev_la_LDFLAGS = -no-undefined
 
-CFLAGS += -Wall -Werror
+CFLAGS += -Os -g -Wall -Werror
 
 if WIN32
 CFLAGS += -DWIN32
@@ -25,6 +25,11 @@ endif
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = libavdev.pc
 
+if ENABLE_DEBUG
+CFLAGS += -DDEBUG
+endif
+
+if ENABLE_TESTS
 bin_PROGRAMS = test_adev test_vdev test_record
 
 test_adev_SOURCES  = test.c
@@ -38,3 +43,5 @@ test_vdev_LDADD    = $(top_builddir)/libavdev.la $(libavdev_la_LIBADD)
 test_record_SOURCES  = test.c
 test_record_CPPFLAGS = -D_TEST_RECORD_
 test_record_LDADD    = $(top_builddir)/libavdev.la $(libavdev_la_LIBADD)
+endif
+
