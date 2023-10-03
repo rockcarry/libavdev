@@ -148,6 +148,8 @@ typedef struct {
     HBITMAP  hbmp;
     BMP      tbmp;
     IDEV     idev;
+    int      neww;
+    int      newh;
 
     HMODULE             hDDrawDll;
     IDirectDraw        *lpDirectDraw;
@@ -158,6 +160,7 @@ typedef struct {
     #define FLAG_CLOSED (1 << 2)
     #define FLAG_NOSHOW (1 << 3)
     #define FLAG_LOCKED (1 << 4)
+    #define FLAG_RESIZE (1 << 5)
     uint32_t  flags;
     pthread_mutex_t lock;
     pthread_t    hthread;
@@ -267,6 +270,10 @@ static LRESULT CALLBACK VDEV_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             vdev->hdc, ps.rcPaint.left, ps.rcPaint.top, SRCCOPY);
         EndPaint(hwnd, &ps);
         return 0;
+    case WM_SIZE:
+        vdev->neww = LOWORD(lParam);
+        vdev->newh = HIWORD(lParam);
+        return 0;
     case WM_DESTROY:
         PostQuitMessage(0);
         if (vdev->callback) vdev->callback(vdev->cbctx, DEV_MSG_VDEV_CLOSE, 0, 0, 0);
@@ -281,6 +288,7 @@ static void* vdev_thread_proc(void *param)
     WNDCLASS wc   = {0};
     RECT     rect = {0};
     MSG      msg  = {0};
+    DWORD    style= (vdev->flags & FLAG_DDRAW) ? WS_POPUP : (WS_SYSMENU|WS_MINIMIZEBOX);
     int      x, y, w, h;
 
     wc.lpfnWndProc   = VDEV_WNDPROC;
@@ -291,9 +299,8 @@ static void* vdev_thread_proc(void *param)
     wc.lpszClassName = VDEV_WND_CLASS;
     if (!RegisterClass(&wc)) return NULL;
 
-    vdev->hwnd = CreateWindow(VDEV_WND_CLASS, VDEV_WND_NAME, (vdev->flags & FLAG_DDRAW) ? WS_POPUP : (WS_SYSMENU|WS_MINIMIZEBOX),
-        CW_USEDEFAULT, CW_USEDEFAULT, vdev->tbmp.width, vdev->tbmp.height,
-        NULL, NULL, wc.hInstance, NULL);
+    if (vdev->flags & FLAG_RESIZE) style |= WS_SIZEBOX|WS_MAXIMIZEBOX;
+    vdev->hwnd = CreateWindow(VDEV_WND_CLASS, VDEV_WND_NAME, style, CW_USEDEFAULT, CW_USEDEFAULT, vdev->tbmp.width, vdev->tbmp.height, NULL, NULL, wc.hInstance, NULL);
     if (!vdev->hwnd) goto done;
 
 #ifdef _WIN64
@@ -337,11 +344,14 @@ void* vdev_init(int w, int h, char *params, PFN_VDEV_MSG_CB callback, void *cbct
     if (!vdev) return NULL;
 
     if (params) {
-        if      (strcmp(params, "fullscreen") == 0) vdev->flags |= FLAG_DDRAW;
-        else if (strcmp(params, "inithidden") == 0) vdev->flags |= FLAG_NOSHOW;
+        if (strcmp(params, "fullscreen") == 0) vdev->flags |= FLAG_DDRAW;
+        if (strcmp(params, "inithidden") == 0) vdev->flags |= FLAG_NOSHOW;
+        if (strcmp(params, "resizeable") == 0) vdev->flags |= FLAG_RESIZE;
     }
     vdev->callback       = callback;
     vdev->cbctx          = cbctx;
+    vdev->neww           = w;
+    vdev->newh           = h;
     vdev->tbmp.width     = w;
     vdev->tbmp.height    = h;
     vdev->tbmp.stride    = w * sizeof(uint32_t);
@@ -374,6 +384,11 @@ BMP* vdev_lock(void *ctx)
     pthread_mutex_lock(&vdev->lock);
     vdev->flags |= FLAG_LOCKED;
     pthread_mutex_unlock(&vdev->lock);
+    if (vdev->neww != vdev->tbmp.width || vdev->newh != vdev->tbmp.height) {
+        vdev->tbmp.width = vdev->neww, vdev->tbmp.height = vdev->newh;
+        init_free_for_ddraw_gdi(vdev, 0);
+        init_free_for_ddraw_gdi(vdev, 1);
+    }
     if (vdev->flags & FLAG_DDRAW) {
         DDSURFACEDESC ddsd = { sizeof(ddsd) };
         vdev->lpDDSPrimary->pVtbl->Lock(vdev->lpDDSPrimary, NULL, &ddsd, DDLOCK_WAIT, NULL);
@@ -389,13 +404,9 @@ void vdev_unlock(void *ctx)
     if (vdev->flags & FLAG_DDRAW) {
         vdev->lpDDSPrimary->pVtbl->Unlock(vdev->lpDDSPrimary, NULL);
     } else {
-#if 1
         HDC hdc = GetDC(vdev->hwnd);
         BitBlt(hdc, 0, 0, vdev->tbmp.width, vdev->tbmp.height, vdev->hdc, 0, 0, SRCCOPY);
         ReleaseDC(vdev->hwnd, hdc);
-#else
-        InvalidateRect(vdev->hwnd, NULL, FALSE);
-#endif
     }
     pthread_mutex_lock(&vdev->lock);
     vdev->flags &= ~FLAG_LOCKED;
@@ -409,6 +420,8 @@ void vdev_set(void *ctx, char *name, void *data)
     if (strcmp(name, "show") == 0) {
         ShowWindow(vdev->hwnd, SW_SHOW);
         UpdateWindow(vdev->hwnd);
+    } else if (strcmp(name, "title") == 0) {
+        SetWindowText(vdev->hwnd, data);
     }
 }
 
