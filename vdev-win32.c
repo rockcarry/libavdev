@@ -346,7 +346,7 @@ void* vdev_init(int w, int h, char *params, PFN_VDEV_MSG_CB callback, void *cbct
     if (params) {
         if (strcmp(params, "fullscreen") == 0) vdev->flags |= FLAG_DDRAW;
         if (strcmp(params, "inithidden") == 0) vdev->flags |= FLAG_NOSHOW;
-        if (strcmp(params, "resizeable") == 0) vdev->flags |= FLAG_RESIZE;
+        if (strcmp(params, "resizable" ) == 0) vdev->flags |= FLAG_RESIZE;
     }
     vdev->callback       = callback;
     vdev->cbctx          = cbctx;
