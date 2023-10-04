@@ -20,9 +20,15 @@ typedef struct {
 #endif
 
 enum {
-    DEV_MSG_VDEV_CLOSE ,
-    DEV_MSG_KEY_EVENT  ,
-    DEV_MSG_MOUSE_EVENT,
+    DEV_MSG_VDEV_CLOSE,
+    DEV_MSG_KEY_EVENT,
+    DEV_MSG_MOUSE_MOVE      = 512,
+    DEV_MSG_MOUSE_LBUTTON_U = 513,
+    DEV_MSG_MOUSE_LBUTTON_D = 514,
+    DEV_MSG_MOUSE_RBUTTON_U = 516,
+    DEV_MSG_MOUSE_RBUTTON_D = 517,
+    DEV_MSG_MOUSE_MBUTTON_U = 519,
+    DEV_MSG_MOUSE_MBUTTON_D = 520,
 };
 
 typedef int (*PFN_VDEV_MSG_CB)(void *cbctx, int msg, uint32_t param1, uint32_t param2, uint32_t param3);

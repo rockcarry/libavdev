@@ -241,6 +241,9 @@ static LRESULT CALLBACK VDEV_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
 #endif
     IDEV *idev = &vdev->idev;
     int  ret = -1;
+    if (uMsg == WM_MOUSEMOVE || uMsg == WM_LBUTTONUP || uMsg == WM_LBUTTONDOWN || uMsg == WM_MBUTTONUP || uMsg == WM_MBUTTONDOWN || uMsg == WM_RBUTTONUP || uMsg == WM_RBUTTONDOWN) {
+        if (idev->callback) ret = idev->callback(idev->cbctx, uMsg, LOWORD(lParam), HIWORD(lParam), wParam);
+    }
     switch (uMsg) {
     case WM_KEYUP: case WM_KEYDOWN: case WM_SYSKEYUP: case WM_SYSKEYDOWN:
         if (idev->callback) ret = idev->callback(idev->cbctx, DEV_MSG_KEY_EVENT, uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN, wParam, 0);
@@ -433,7 +436,9 @@ long vdev_get(void *ctx, char *name, void *data)
 {
     VDEV *vdev = (VDEV*)ctx;
     if (!ctx || !name) return 0;
-    if (strcmp(name, "state") == 0) return (long)((vdev->flags & FLAG_CLOSED) ? "closed" : "running");
-    if (strcmp(name, "idev" ) == 0) return (long)&vdev->idev;
+    if (strcmp(name, "state" ) == 0) return (long)((vdev->flags & FLAG_CLOSED) ? "closed" : "running");
+    if (strcmp(name, "idev"  ) == 0) return (long)&vdev->idev;
+    if (strcmp(name, "width" ) == 0) return (long)vdev->tbmp.width;
+    if (strcmp(name, "height") == 0) return (long)vdev->tbmp.height;
     return 0;
 }
