@@ -161,6 +161,7 @@ typedef struct {
     #define FLAG_NOSHOW (1 << 3)
     #define FLAG_LOCKED (1 << 4)
     #define FLAG_RESIZE (1 << 5)
+    #define FLAG_UPDATE (1 << 6)
     uint32_t  flags;
     pthread_mutex_t lock;
     pthread_t    hthread;
@@ -273,6 +274,7 @@ static LRESULT CALLBACK VDEV_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
     case WM_SIZE:
         vdev->neww = LOWORD(lParam);
         vdev->newh = HIWORD(lParam);
+        if (vdev->neww && vdev->newh) vdev->flags |= FLAG_UPDATE;
         return 0;
     case WM_DESTROY:
         PostQuitMessage(0);
@@ -384,8 +386,10 @@ BMP* vdev_lock(void *ctx)
     pthread_mutex_lock(&vdev->lock);
     vdev->flags |= FLAG_LOCKED;
     pthread_mutex_unlock(&vdev->lock);
-    if (vdev->neww != vdev->tbmp.width || vdev->newh != vdev->tbmp.height) {
-        vdev->tbmp.width = vdev->neww, vdev->tbmp.height = vdev->newh;
+    if (vdev->flags & FLAG_UPDATE) {
+        vdev->flags &= ~FLAG_UPDATE;
+        vdev->tbmp.width  = vdev->neww;
+        vdev->tbmp.height = vdev->newh;
         init_free_for_ddraw_gdi(vdev, 0);
         init_free_for_ddraw_gdi(vdev, 1);
     }
