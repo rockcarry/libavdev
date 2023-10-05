@@ -1,3 +1,5 @@
+#include <stdlib.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <windows.h>
 #include <pthread.h>
@@ -148,6 +150,8 @@ typedef struct {
     HBITMAP  hbmp;
     BMP      tbmp;
     IDEV     idev;
+    int      bltx;
+    int      blty;
     int      neww;
     int      newh;
 
@@ -155,13 +159,14 @@ typedef struct {
     IDirectDraw        *lpDirectDraw;
     IDirectDrawSurface *lpDDSPrimary;
 
-    #define FLAG_DDRAW  (1 << 0)
-    #define FLAG_INITED (1 << 1)
-    #define FLAG_CLOSED (1 << 2)
-    #define FLAG_NOSHOW (1 << 3)
-    #define FLAG_LOCKED (1 << 4)
-    #define FLAG_RESIZE (1 << 5)
-    #define FLAG_UPDATE (1 << 6)
+    #define FLAG_DDRAW    (1 << 0)
+    #define FLAG_INITED   (1 << 1)
+    #define FLAG_CLOSED   (1 << 2)
+    #define FLAG_NOSHOW   (1 << 3)
+    #define FLAG_LOCKED   (1 << 4)
+    #define FLAG_RESIZE   (1 << 5)
+    #define FLAG_UPDATE   (1 << 6)
+    #define FLAG_FROMHWND (1 << 7)
     uint32_t  flags;
     pthread_mutex_t lock;
     pthread_t    hthread;
@@ -352,6 +357,7 @@ void* vdev_init(int w, int h, char *params, PFN_VDEV_MSG_CB callback, void *cbct
         if (strcmp(params, "fullscreen") == 0) vdev->flags |= FLAG_DDRAW;
         if (strcmp(params, "inithidden") == 0) vdev->flags |= FLAG_NOSHOW;
         if (strcmp(params, "resizable" ) == 0) vdev->flags |= FLAG_RESIZE;
+        if (strcmp(params, "fromhwnd"  ) == 0) vdev->flags |= FLAG_FROMHWND;
     }
     vdev->callback       = callback;
     vdev->cbctx          = cbctx;
@@ -362,11 +368,16 @@ void* vdev_init(int w, int h, char *params, PFN_VDEV_MSG_CB callback, void *cbct
     vdev->tbmp.stride    = w * sizeof(uint32_t);
     vdev->tbmp.cdepth    = 32;
     pthread_mutex_init(&vdev->lock, NULL);
-    pthread_create(&vdev->hthread, NULL, vdev_thread_proc, vdev);
-    while (!(vdev->flags & (FLAG_INITED | FLAG_CLOSED))) usleep(100 * 1000);
-    if (vdev->flags & FLAG_CLOSED) {
-        vdev_exit(vdev, 0);
-        vdev = NULL;
+    if (!(vdev->flags & FLAG_FROMHWND)) {
+        pthread_create(&vdev->hthread, NULL, vdev_thread_proc, vdev);
+        while (!(vdev->flags & (FLAG_INITED | FLAG_CLOSED))) usleep(100 * 1000);
+        if (vdev->flags & FLAG_CLOSED) {
+            vdev_exit(vdev, 0);
+            vdev = NULL;
+        }
+    } else {
+        vdev->hwnd   = cbctx;
+        vdev->flags |= FLAG_UPDATE;
     }
     return vdev;
 }
@@ -375,8 +386,10 @@ void vdev_exit(void *ctx, int close)
 {
     VDEV *vdev = (VDEV*)ctx;
     if (!vdev) return;
-    if (close && vdev->hwnd) PostMessage(vdev->hwnd, WM_CLOSE, 0, 0);
-    if (vdev->hthread) pthread_join(vdev->hthread, NULL);
+    if (!(vdev->flags & FLAG_FROMHWND)) {
+        if (close && vdev->hwnd) PostMessage(vdev->hwnd, WM_CLOSE, 0, 0);
+        if (vdev->hthread) pthread_join(vdev->hthread, NULL);
+    }
     if (vdev->lock) pthread_mutex_destroy(&vdev->lock);
     free(vdev);
 }
@@ -412,7 +425,7 @@ void vdev_unlock(void *ctx)
         vdev->lpDDSPrimary->pVtbl->Unlock(vdev->lpDDSPrimary, NULL);
     } else {
         HDC hdc = GetDC(vdev->hwnd);
-        BitBlt(hdc, 0, 0, vdev->tbmp.width, vdev->tbmp.height, vdev->hdc, 0, 0, SRCCOPY);
+        BitBlt(hdc, vdev->bltx, vdev->blty, vdev->tbmp.width, vdev->tbmp.height, vdev->hdc, 0, 0, SRCCOPY);
         ReleaseDC(vdev->hwnd, hdc);
     }
     pthread_mutex_lock(&vdev->lock);
@@ -429,6 +442,9 @@ void vdev_set(void *ctx, char *name, void *data)
         UpdateWindow(vdev->hwnd);
     } else if (strcmp(name, "title") == 0) {
         SetWindowText(vdev->hwnd, data);
+    } else if (strcmp(name, "rect") == 0) {
+        sscanf(data, "%d,%d,%d,%d", &vdev->bltx, &vdev->blty, &vdev->neww, &vdev->newh);
+        vdev->flags |= FLAG_UPDATE;
     }
 }
 
