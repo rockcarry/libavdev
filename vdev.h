@@ -12,6 +12,7 @@ typedef struct {
     int       height;
     int       stride;
     int       cdepth;
+    int       pixfmt;
     uint8_t  *pdata;
     uint32_t *ppal;
     PFN_SETPIXEL setpixel;
