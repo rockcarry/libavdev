@@ -407,6 +407,7 @@ BMP* vdev_lock(void *ctx)
         vdev->flags &= ~FLAG_UPDATE;
         vdev->tbmp.width  = vdev->neww;
         vdev->tbmp.height = vdev->newh;
+        vdev->tbmp.stride = vdev->neww * sizeof(uint32_t);
         init_free_for_ddraw_gdi(vdev, 0);
         init_free_for_ddraw_gdi(vdev, 1);
     }
