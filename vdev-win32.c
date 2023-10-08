@@ -450,13 +450,13 @@ void vdev_set(void *ctx, char *name, void *data)
     }
 }
 
-long vdev_get(void *ctx, char *name, void *data)
+void* vdev_get(void *ctx, char *name, void *data)
 {
     VDEV *vdev = (VDEV*)ctx;
-    if (!ctx || !name) return 0;
-    if (strcmp(name, "state" ) == 0) return (long)((vdev->flags & FLAG_CLOSED) ? "closed" : "running");
-    if (strcmp(name, "idev"  ) == 0) return (long)&vdev->idev;
-    if (strcmp(name, "width" ) == 0) return (long)vdev->tbmp.width;
-    if (strcmp(name, "height") == 0) return (long)vdev->tbmp.height;
-    return 0;
+    if (!ctx || !name) return NULL;
+    if (strcmp(name, "state" ) == 0) return (vdev->flags & FLAG_CLOSED) ? "closed" : "running";
+    if (strcmp(name, "idev"  ) == 0) return &vdev->idev;
+    if (strcmp(name, "width" ) == 0) return (void*)(intptr_t)vdev->tbmp.width;
+    if (strcmp(name, "height") == 0) return (void*)(intptr_t)vdev->tbmp.height;
+    return NULL;
 }

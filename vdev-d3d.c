@@ -129,5 +129,5 @@ void vdev_unlock(void *ctx)
     }
 }
 
-void vdev_set(void *ctx, char *name, void *data) {}
-long vdev_get(void *ctx, char *name, void *data) { return 0; }
+void  vdev_set(void *ctx, char *name, void *data) {}
+void* vdev_get(void *ctx, char *name, void *data) { return NULL; }

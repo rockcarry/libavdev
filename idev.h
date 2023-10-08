@@ -18,7 +18,7 @@ typedef struct {
 void* idev_init(char *params, PFN_IDEV_MSG_CB callback, void *cbctx);
 void  idev_exit(void *ctx);
 void  idev_set (void *ctx, char *name, void *data);
-long  idev_get (void *ctx, char *name, void *data);
+void* idev_get (void *ctx, char *name, void *data);
 
 int   idev_getkey  (void *ctx, int key);
 void  idev_getmouse(void *ctx, int *x, int *y, int *btns);

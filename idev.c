@@ -18,7 +18,7 @@ void idev_set(void *ctx, char *name, void *data)
     else if (strcmp(name, "cbctx"   ) == 0) dev->cbctx = data;
 }
 
-long idev_get(void *ctx, char *name, void *data) { return 0; }
+void* idev_get(void *ctx, char *name, void *data) { return NULL; }
 
 int idev_getkey(void *ctx, int key)
 {
