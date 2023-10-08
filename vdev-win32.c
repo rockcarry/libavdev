@@ -367,7 +367,7 @@ void* vdev_init(int w, int h, char *params, PFN_VDEV_MSG_CB callback, void *cbct
     vdev->tbmp.height    = h;
     vdev->tbmp.stride    = w * sizeof(uint32_t);
     vdev->tbmp.cdepth    = 32;
-    vdev->tbmp.pixfmt    = 30; // AV_PIX_FMT_RGB32
+    vdev->tbmp.pixfmt    = 28; // AV_PIX_FMT_RGB32
     pthread_mutex_init(&vdev->lock, NULL);
     if (!(vdev->flags & FLAG_FROMHWND)) {
         pthread_create(&vdev->hthread, NULL, vdev_thread_proc, vdev);
