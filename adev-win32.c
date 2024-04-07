@@ -20,6 +20,7 @@ typedef struct {
     WAVEHDR *sWaveOutHdr;
     int      nWaveOutHead;
     int      nWaveOutTail;
+    int      nWaveOutCurr;
     int      nWaveOutBufn;
     HANDLE   hWaveOutSem ;
 
@@ -39,6 +40,7 @@ static void CALLBACK waveOutProc(HWAVEOUT hwo, UINT uMsg, DWORD_PTR dwInstance, 
     case WOM_DONE:
         if (dev->callback) dev->callback(dev->cbctx, ADEV_CMD_DATA_PLAY, phdr->lpData, phdr->dwBytesRecorded);
         if (++dev->nWaveOutHead == dev->nWaveOutBufn) dev->nWaveOutHead = 0;
+        dev->nWaveOutCurr--;
         ReleaseSemaphore(dev->hWaveOutSem, 1, NULL);
         break;
     }
@@ -120,6 +122,7 @@ int adev_play(void *ctx, void *buf, int len, int waitms)
         memcpy(dev->sWaveOutHdr[dev->nWaveOutTail].lpData, buf, dev->sWaveOutHdr[dev->nWaveOutTail].dwBufferLength);
         waveOutWrite(dev->hWaveOut, &dev->sWaveOutHdr[dev->nWaveOutTail], sizeof(WAVEHDR));
         if (++dev->nWaveOutTail == dev->nWaveOutBufn) dev->nWaveOutTail = 0;
+        dev->nWaveOutCurr++;
         ret = 0;
     }
 done:
@@ -199,4 +202,11 @@ void adev_set(void *ctx, char *name, void *data)
     }
 }
 
-long adev_get(void *ctx, char *name, void *data) { return 0; }
+long adev_get(void *ctx, char *name, void *data)
+{
+    if (!ctx) return 0;
+    ADEV *adev = ctx;
+    if (strcmp(name, "bufnum") == 0) return adev->nWaveOutCurr;
+    return 0;
+}
+
