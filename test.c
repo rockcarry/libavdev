@@ -78,7 +78,7 @@ static void my_adev_callback(void *ctxt, int cmd, void *buf, int len)
             if (buf && len > 0) {
                 int lasty, cury, x, i;
                 memset(bmp->pdata, 0, bmp->height * bmp->stride);
-                lasty = pcm[0] * bmp->height / 0x10000 + bmp->height / 2;
+                lasty = bmp->height / 2 - pcm[0] * bmp->height / 0x10000;
                 for (x = 1; x < bmp->width; x++) {
                     i    = (len / sizeof(int16_t) - 1) * x / (bmp->width - 1);
                     cury = bmp->height / 2 - pcm[i] * bmp->height / 0x10000;
