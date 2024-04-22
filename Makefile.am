@@ -8,8 +8,6 @@ lib_LTLIBRARIES = libavdev.la
 libavdev_la_SOURCES = utils.c idev.c
 libavdev_la_LDFLAGS = -no-undefined
 
-CFLAGS += -Os -g -Wall -Werror
-
 if WIN32
 CFLAGS += -DWIN32
 libavdev_la_SOURCES += adev-win32.c vdev-win32.c

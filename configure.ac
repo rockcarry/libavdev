@@ -20,19 +20,7 @@ PKG_PROG_PKG_CONFIG
 # Checks for libraries.
 AC_CHECK_LIB([pthread], [pthread_create])
 
-# Checks for header files.
-AC_CHECK_HEADERS([stdint.h unistd.h])
-
-# Checks for typedefs, structures, and compiler characteristics.
-AC_TYPE_INT16_T
-AC_TYPE_INT32_T
-AC_TYPE_UINT16_T
-AC_TYPE_UINT32_T
-AC_TYPE_UINT8_T
-
-# Checks for library functions.
-AC_FUNC_MALLOC
-AC_CHECK_FUNCS([clock_gettime memset])
+CFLAGS="-Os -g -Wall -Werror"
 
 # Checks for Optional Features
 AC_ARG_ENABLE(debug, [AS_HELP_STRING([--enable-debug], [enable debug mode [default=no]])], [], [debug=no])
