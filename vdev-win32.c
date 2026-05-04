@@ -1,3 +1,5 @@
+#include <stdlib.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <windows.h>
 #include <pthread.h>
@@ -144,8 +146,9 @@ typedef void*(WINAPI *PFN_DirectDrawCreate)(void *guid, void **lpddraw, void *iu
 
 typedef struct {
     HWND     hwnd;
-    HDC      hdc;
+    HDC      hdcwnd;
     HBITMAP  hbmp;
+    HDC      hdcbmp;
     BMP      tbmp;
     IDEV     idev;
 
@@ -208,15 +211,15 @@ static int init_free_for_ddraw_gdi(VDEV *vdev, int init)
             bmpinfo.bmiHeader.biBitCount    =  32;
             bmpinfo.bmiHeader.biCompression =  BI_RGB;
 
-            vdev->hdc  = CreateCompatibleDC(NULL);
-            vdev->hbmp = CreateDIBSection(vdev->hdc, &bmpinfo, DIB_RGB_COLORS, (void**)&(vdev->tbmp.pdata), NULL, 0);
-            if (!vdev->hdc || !vdev->hbmp || !vdev->tbmp.pdata) return -1;
+            vdev->hdcbmp = CreateCompatibleDC(vdev->hdcwnd);
+            vdev->hbmp   = CreateDIBSection(vdev->hdcbmp, &bmpinfo, DIB_RGB_COLORS, (void**)&(vdev->tbmp.pdata), NULL, 0);
+            if (!vdev->hdcbmp || !vdev->hbmp || !vdev->tbmp.pdata) return -1;
 
             GetObject(vdev->hbmp, sizeof(BITMAP), &bitmap);
-            SelectObject(vdev->hdc, vdev->hbmp);
+            SelectObject(vdev->hdcbmp, vdev->hbmp);
         } else {
-            if (vdev->hdc ) DeleteDC    (vdev->hdc );
-            if (vdev->hbmp) DeleteObject(vdev->hbmp);
+            if (vdev->hdcbmp) DeleteDC    (vdev->hdcbmp);
+            if (vdev->hbmp  ) DeleteObject(vdev->hbmp  );
         }
     }
 
@@ -264,7 +267,7 @@ static LRESULT CALLBACK VDEV_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         BitBlt(hdc, ps.rcPaint.left, ps.rcPaint.top,
             ps.rcPaint.right  - ps.rcPaint.left,
             ps.rcPaint.bottom - ps.rcPaint.top,
-            vdev->hdc, ps.rcPaint.left, ps.rcPaint.top, SRCCOPY);
+            vdev->hdcbmp, ps.rcPaint.left, ps.rcPaint.top, SRCCOPY);
         EndPaint(hwnd, &ps);
         return 0;
     case WM_DESTROY:
@@ -295,6 +298,7 @@ static void* vdev_thread_proc(void *param)
         CW_USEDEFAULT, CW_USEDEFAULT, vdev->tbmp.width, vdev->tbmp.height,
         NULL, NULL, wc.hInstance, NULL);
     if (!vdev->hwnd) goto done;
+    vdev->hdcwnd = GetDC(vdev->hwnd);
 
 #ifdef _WIN64
     SetWindowLongPtr(vdev->hwnd, GWLP_USERDATA, (LONG_PTR)vdev);
@@ -327,7 +331,10 @@ done:
     pthread_mutex_unlock(&vdev->lock);
     while (vdev->flags & FLAG_LOCKED) usleep(10 * 1000);
     init_free_for_ddraw_gdi(vdev, 0);
-    if (vdev->hwnd) { DestroyWindow(vdev->hwnd); vdev->hwnd = NULL; }
+    if (vdev->hwnd) {
+        ReleaseDC(vdev->hwnd, vdev->hdcwnd); vdev->hdcwnd = NULL;
+        DestroyWindow(vdev->hwnd);           vdev->hwnd   = NULL;
+    }
     return NULL;
 }
 
@@ -390,9 +397,7 @@ void vdev_unlock(void *ctx)
         vdev->lpDDSPrimary->pVtbl->Unlock(vdev->lpDDSPrimary, NULL);
     } else {
 #if 1
-        HDC hdc = GetDC(vdev->hwnd);
-        BitBlt(hdc, 0, 0, vdev->tbmp.width, vdev->tbmp.height, vdev->hdc, 0, 0, SRCCOPY);
-        ReleaseDC(vdev->hwnd, hdc);
+        BitBlt(vdev->hdcwnd, 0, 0, vdev->tbmp.width, vdev->tbmp.height, vdev->hdcbmp, 0, 0, SRCCOPY);
 #else
         InvalidateRect(vdev->hwnd, NULL, FALSE);
 #endif
