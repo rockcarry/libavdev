@@ -21,13 +21,11 @@ enum {
     VDEV_CALLBACK_VDEV_INITED = 0x10170000,
     VDEV_CALLBACK_VDEV_RESIZE,
     VDEV_CALLBACK_VDEV_CLOSED,
-    VDEV_CALLBACK_KEY_EVENT  ,
-    VDEV_CALLBACK_MOUSE_EVENT,
 };
 
-typedef long (*PFN_MOD_ICTBL)(void *cbctx, int type, void *buf, int size);
+typedef long (*PFN_VDEV_CB)(void *cbctx, int type, void *buf, int size);
 
-void* vdev_init(void *params, PFN_MOD_ICTBL callback, void *cbctx); // params: example: "surfaces:3,resize,w:640,h:480", if NULL return NULL
+void* vdev_init(void *params, PFN_VDEV_CB callback, void *cbctx); // params: example: "surfaces:3,resize,w:640,h:480", if NULL return NULL
 void  vdev_exit(void *ctx);
 
 BMP*  vdev_lock  (void *ctx, int idx);
@@ -38,7 +36,8 @@ long  vdev_set (void *ctx, char *key, void *val);
 long  vdev_get (void *ctx, char *key, void *val);
 void  vdev_dump(void *ctx, char *str, int len, int page);
 
-#define VDEV_KEY_STATE           "i_state"            // set/get
+#define VDEV_KEY_STATE           "i_state"            // set/get, get VDEV_CALLBACK_VDEV_CLOSED - indicate window closed
+#define VDEV_KEY_IDEV            "p_idev"             // get only, get idev context
 #define VDEV_KEY_SURFACE_PARAMS  "s_surface_params0"  // set, surface params
                                                       // example: "pixfmt:argb,w:640,h:480,x:center,y:center"
                                                       //          "parent:1,w:0.5,h:0.1,x:center,y:0"

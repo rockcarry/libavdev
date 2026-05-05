@@ -1,7 +1,7 @@
 AUTOMAKE_OPTIONS = foreign
 
 libavdevincludedir = $(includedir)/libavdev
-nobase_libavdevinclude_HEADERS = adev.h vdev.h idev.h
+nobase_libavdevinclude_HEADERS = acap.h adev.h vdev.h idev.h
 noinst_HEADERS = utils.h
 
 lib_LTLIBRARIES = libavdev.la
@@ -10,12 +10,12 @@ libavdev_la_LDFLAGS = -no-undefined
 
 if WIN32
 CFLAGS += -DWIN32
-libavdev_la_SOURCES += adev-win32.c vdev-win32.c
+libavdev_la_SOURCES += acap-win32.c adev-win32.c vdev-win32.c
 libavdev_la_LIBADD = -lwinmm -lgdi32
 endif
 
 if LINUX
-libavdev_la_SOURCES += adev-linux.c vdev-linux.c
+libavdev_la_SOURCES += acap-linux.c adev-linux.c vdev-linux.c
 CFLAGS += -DLINUX
 libavdev_la_LIBADD = -lm
 endif

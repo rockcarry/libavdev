@@ -5,6 +5,7 @@
 #include <math.h>
 #include <unistd.h>
 #include <pthread.h>
+#include "idev.h"
 #include "vdev.h"
 
 typedef struct {
@@ -110,13 +111,13 @@ typedef struct {
     #define FLAG_WMSIZE     (1 << 5)
     #define FLAG_REINITSURF (1 << 6)
     #define FLAG_DEVLOST    (1 << 7)
-    #define FLAG_UPDATEROT  (1 << 8)
     uint32_t flags;
     pthread_mutex_t lock;
 
-    MOD_THREAD    mthread;
-    PFN_MOD_ICTBL callback;
-    void         *cbctx;
+    MOD_THREAD  mthread;
+    PFN_VDEV_CB callback;
+    void       *cbctx;
+    IDEV        idev;
 
     HMODULE               hDll;
     PFNDirect3DCreate9    pfnDirect3DCreate9;
@@ -168,6 +169,8 @@ static int init_free_for_d3d(VDEV *vdev, int init) // init: 1: init, 0: free, -1
             vdev->flags |=  FLAG_CLOSED;
         } else {
             // reset device
+            vdev->d3dpp.BackBufferWidth  = GetSystemMetrics(SM_CXSCREEN);
+            vdev->d3dpp.BackBufferHeight = GetSystemMetrics(SM_CYSCREEN);
             HRESULT hr = IDirect3DDevice9_Reset(vdev->pD3DDev, &vdev->d3dpp);
             if (FAILED(hr)) return -1;
             vdev->flags |= FLAG_REINITSURF;
@@ -212,13 +215,12 @@ static void setup_vertex_buffer(LPDIRECT3DVERTEXBUFFER9 vb, int dstx, int dsty, 
                 pv[i].y = sin_a * pts[i][0] + cos_a * pts[i][1] + cy;
             }
         } else {
-            pv[0].x = (float) dstx;         pv[0].y = (float) dsty;
-            pv[1].x = (float)(dstx + dstw); pv[1].y = (float) dsty;
-            pv[2].x = (float)(dstx + dstw); pv[2].y = (float)(dsty + dsth);
-            pv[3].x = (float) dstx;         pv[3].y = (float)(dsty + dsth);
+            #define OFFSET_XY -0.5f
+            pv[0].x = OFFSET_XY + dstx;            pv[0].y = OFFSET_XY + dsty;
+            pv[1].x = OFFSET_XY + dstx + dstw - 1; pv[1].y = OFFSET_XY + dsty;
+            pv[2].x = OFFSET_XY + dstx + dstw - 1; pv[2].y = OFFSET_XY + dsty + dsth - 1;
+            pv[3].x = OFFSET_XY + dstx;            pv[3].y = OFFSET_XY + dsty + dsth - 1;
         }
-        printf("<6> rotate_point: %f, %f\n%f, %f\n%f, %f\n%f, %f\n",
-            pv[0].x, pv[0].y, pv[1].x, pv[1].y, pv[2].x, pv[2].y, pv[3].x, pv[3].y);
         IDirect3DVertexBuffer9_Unlock(vb);
     } else {
         printf("<4> setup_vertex_buffer: lock failed !\n");
@@ -326,23 +328,46 @@ static LRESULT CALLBACK VDEV_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
 #else
     VDEV *vdev = (VDEV*)GetWindowLong(hwnd, GWL_USERDATA);
 #endif
+    IDEV *idev = &vdev->idev;
     int  ret = -1;
     switch (uMsg) {
+    case WM_KEYUP: case WM_KEYDOWN: case WM_SYSKEYUP: case WM_SYSKEYDOWN:
+        if (idev->callback) ret = idev->callback(idev->cbctx, IDEV_CALLBACK_KEY_EVENT, (void*)(uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN), wParam);
+        if (ret != 0 && uMsg == WM_KEYDOWN && wParam == VK_ESCAPE) PostQuitMessage(0);
+        int idx = ((BYTE)wParam) / 32;
+        int bit = ((BYTE)wParam) % 32;
+        if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) idev->key_bits[idx] |= (1 << bit);
+        else idev->key_bits[idx] &= ~(1 << bit);
+        return 0;
+    case WM_MOUSEMOVE:
+        idev->mouse_x = (int32_t)((lParam >> 0) & 0xFFFF);
+        idev->mouse_y = (int32_t)((lParam >>16) & 0xFFFF);
+        return 0;
+    case WM_MOUSEWHEEL:
+        return 0;
+    case WM_LBUTTONUP  : idev->mouse_btns &= ~(1 << 0); return 0;
+    case WM_LBUTTONDOWN: idev->mouse_btns |=  (1 << 0); return 0;
+    case WM_MBUTTONUP  : idev->mouse_btns &= ~(1 << 1); return 0;
+    case WM_MBUTTONDOWN: idev->mouse_btns |=  (1 << 1); return 0;
+    case WM_RBUTTONUP  : idev->mouse_btns &= ~(1 << 2); return 0;
+    case WM_RBUTTONDOWN: idev->mouse_btns |=  (1 << 2); return 0;
     case WM_SIZE:
         vdev->window_width  = LOWORD(lParam);
         vdev->window_height = HIWORD(lParam);
         vdev->flags |= FLAG_REINITSURF;
-        if (vdev->flags & FLAG_INITED) vdev->callback(vdev->cbctx, VDEV_CALLBACK_VDEV_RESIZE, NULL, 0);
+        if (vdev->flags & FLAG_INITED) {
+            pthread_mutex_lock(&vdev->lock);
+            vdev_reinit_surfaces(vdev);
+            pthread_mutex_unlock(&vdev->lock);
+            vdev->callback(vdev->cbctx, VDEV_CALLBACK_VDEV_RESIZE, NULL, 0);
+            vdev_render(vdev);
+        }
         break;
-    case WM_KEYUP: case WM_KEYDOWN: case WM_SYSKEYUP: case WM_SYSKEYDOWN:
-        if (ret != 0 && uMsg == WM_KEYDOWN && wParam == VK_ESCAPE) PostQuitMessage(0);
-        return 0;
     case WM_PAINT:
         vdev_render(vdev);
         break;
     case WM_DESTROY:
         PostQuitMessage(0);
-        vdev->callback(vdev->cbctx, VDEV_CALLBACK_VDEV_CLOSED, NULL, 0);
         return 0;
     }
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -419,33 +444,46 @@ done:
 
 static long defcb(void *cbctx, int type, void *buf, int len) { return -1; }
 
-void* vdev_init(void *params, PFN_MOD_ICTBL callback, void *cbctx)
+void* vdev_init(void *params, PFN_VDEV_CB callback, void *cbctx)
 {
     int surfaces_count = 0;
     if (!params) return NULL;
     char *str = strstr(params, "surfaces:"); if (str) sscanf(str, "surfaces:%d", &surfaces_count);
-    surfaces_count = surfaces_count ? surfaces_count : 1;
+    surfaces_count = surfaces_count ? surfaces_count : 2;
     VDEV *vdev = calloc(1, sizeof(VDEV) + surfaces_count * sizeof(SURFACE));
     if (!vdev) return NULL;
+    vdev->surface_count = surfaces_count;
+
     if (strstr(params, "fullscreen")) vdev->flags |= FLAG_FULLSCREEN;
     if (strstr(params, "inithidden")) vdev->flags |= FLAG_NOSHOW;
     if (strstr(params, "resize"    )) vdev->flags |= FLAG_RESIZE;
+
     str = strstr(params, "title:");
     if (str) sscanf(str, "title:%63[^,]", vdev->title);
     else strncpy(vdev->title, VDEV_WND_NAME, sizeof(vdev->title) - 1);
+
     str = strstr(params, "w:"); if (str) sscanf(str, "w:%d", &vdev->window_width );
     str = strstr(params, "h:"); if (str) sscanf(str, "h:%d", &vdev->window_height);
-    vdev->surface_count = surfaces_count;
     vdev->window_width  = vdev->window_width  ? vdev->window_width  : 640;
     vdev->window_height = vdev->window_height ? vdev->window_height : 480;
+
     pthread_mutex_init(&vdev->lock, NULL);
     vdev->callback           = callback ? callback : defcb;
     vdev->cbctx              = cbctx;
+    vdev->idev.callback      = vdev->callback;
+    vdev->idev.cbctx         = vdev->cbctx;
     vdev->mthread.proc       = vdev_thread_proc;
     vdev->mthread.arg        = vdev;
     vdev->hDll               = LoadLibrary(TEXT("d3d9.dll"));
     vdev->pfnDirect3DCreate9 = (PFNDirect3DCreate9)GetProcAddress(vdev->hDll, "Direct3DCreate9");
-    vdev_set(vdev, VDEV_KEY_SURFACE_PARAMS, "parent:-1,letterbox:1,sw:640,sh:480,sx:center,sy:center");
+
+    char tmp[64]; snprintf(tmp, sizeof(tmp), "parent:-1,letterbox:1,sw:%d,sh:%d,sx:center,sy:center", vdev->window_width, vdev->window_height);
+    vdev_set(vdev, VDEV_KEY_SURFACE_PARAMS, tmp);
+
+    if (strstr(params, "show")) {
+        vdev_set(vdev, VDEV_KEY_STATE, (void*)1);
+        for (int i = 0; i < 10 && !(vdev->flags & FLAG_INITED); i++) usleep(100 * 1000);
+    }
     return vdev;
 }
 
@@ -470,10 +508,8 @@ BMP* vdev_lock(void *ctx, int idx)
 
     SURFACE *surf = &vdev->surfaces[idx];
     D3DLOCKED_RECT lr;
-    if (!surf->surface) { printf("<4> vdev surf->surface is NULL !\n"); goto fail; }
-    if (FAILED(IDirect3DSurface9_LockRect(surf->surface, &lr, NULL, 0))) {
-        printf("<4> vdev IDirect3DSurface9_LockRect failed !\n");
-        goto fail;
+    if (!surf->surface || FAILED(IDirect3DSurface9_LockRect(surf->surface, &lr, NULL, 0))) {
+        printf("<4> vdev IDirect3DSurface9_LockRect failed, surf->surface: %p !\n", surf->surface); goto fail;
     }
 
     surf->bitmap.width  = surf->pw;
@@ -505,9 +541,7 @@ static void copy_surface_to_texture(VDEV *vdev, LPDIRECT3DSURFACE9 surface, LPDI
         HRESULT hr = IDirect3DDevice9_UpdateSurface(vdev->pD3DDev, surface, NULL, textSurf, NULL);
         if (FAILED(hr)) printf("<4> vdev IDirect3DDevice9_UpdateSurface failed !\n");
         IDirect3DSurface9_Release(textSurf);
-    } else {
-        printf("<4> vdev IDirect3DTexture9_GetSurfaceLevel failed !\n");
-    }
+    } else { printf("<4> vdev IDirect3DTexture9_GetSurfaceLevel failed !\n"); }
 }
 
 void vdev_render(void *ctx)
@@ -516,9 +550,6 @@ void vdev_render(void *ctx)
     if (!vdev || !vdev->pD3DDev || !vdev->bkbuf || !(vdev->flags & FLAG_INITED)) return;
 
     pthread_mutex_lock(&vdev->lock);
-
-    RECT rect = { 0, 0, vdev->window_width, vdev->window_height };
-    IDirect3DDevice9_ColorFill(vdev->pD3DDev, vdev->bkbuf, &rect, D3DCOLOR_ARGB(255, 0, 0, 0));
 
     for (int i = 0; i < vdev->surface_count; i++) {
         SURFACE *surf = &vdev->surfaces[i];
@@ -530,23 +561,25 @@ void vdev_render(void *ctx)
         for (int i = 0; i < vdev->surface_count; i++) {
             SURFACE *surf = &vdev->surfaces[i];
             if (!surf->vb || !surf->texture) continue;
+
             if (i == vdev->surface_count - 1) {
                 IDirect3DDevice9_SetRenderState(vdev->pD3DDev, D3DRS_ALPHABLENDENABLE, TRUE);
                 IDirect3DDevice9_SetRenderState(vdev->pD3DDev, D3DRS_SRCBLEND , D3DBLEND_SRCALPHA   );
                 IDirect3DDevice9_SetRenderState(vdev->pD3DDev, D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-                IDirect3DDevice9_SetTextureStageState(vdev->pD3DDev, 0, D3DTSS_COLOROP  , D3DTOP_MODULATE  );
-                IDirect3DDevice9_SetTextureStageState(vdev->pD3DDev, 0, D3DTSS_COLORARG1, D3DTA_TEXTURE    );
-                IDirect3DDevice9_SetTextureStageState(vdev->pD3DDev, 0, D3DTSS_COLORARG2, D3DTA_DIFFUSE    );
                 IDirect3DDevice9_SetTextureStageState(vdev->pD3DDev, 0, D3DTSS_ALPHAOP  , D3DTOP_SELECTARG1);
                 IDirect3DDevice9_SetTextureStageState(vdev->pD3DDev, 0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE    );
             }
+
+            IDirect3DDevice9_SetSamplerState(vdev->pD3DDev, 0, D3DSAMP_MINFILTER, surf->rotate ? D3DTEXF_LINEAR : D3DTEXF_POINT);
+            IDirect3DDevice9_SetSamplerState(vdev->pD3DDev, 0, D3DSAMP_MAGFILTER, surf->rotate ? D3DTEXF_LINEAR : D3DTEXF_POINT);
+            IDirect3DDevice9_SetSamplerState(vdev->pD3DDev, 0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+
             IDirect3DDevice9_SetStreamSource(vdev->pD3DDev, 0, surf->vb, 0, sizeof(CUSTOMVERTEX));
             IDirect3DDevice9_SetFVF(vdev->pD3DDev, D3DFVF_CUSTOMVERTEX);
             IDirect3DDevice9_SetTexture(vdev->pD3DDev, 0, (IDirect3DBaseTexture9*)surf->texture);
             IDirect3DDevice9_DrawPrimitive(vdev->pD3DDev, D3DPT_TRIANGLEFAN, 0, 2);
-            if (i == vdev->surface_count - 1) {
-                IDirect3DDevice9_SetRenderState(vdev->pD3DDev, D3DRS_ALPHABLENDENABLE, FALSE);
-            }
+
+            if (i == vdev->surface_count - 1) IDirect3DDevice9_SetRenderState(vdev->pD3DDev, D3DRS_ALPHABLENDENABLE, FALSE);
         }
 
         IDirect3DDevice9_EndScene(vdev->pD3DDev);
@@ -554,6 +587,7 @@ void vdev_render(void *ctx)
         printf("<4> vdev IDirect3DDevice9_BeginScene failed !\n");
     }
 
+    RECT rect = { 0, 0, vdev->window_width, vdev->window_height };
     HRESULT hr = IDirect3DDevice9_Present(vdev->pD3DDev, &rect, &rect, NULL, NULL);
     if (hr == D3DERR_DEVICELOST) vdev->flags |= FLAG_DEVLOST;
 
@@ -607,7 +641,8 @@ long vdev_get(void *ctx, char *key, void *val)
 {
     if (!ctx || !key) return 0;
     VDEV *vdev = (VDEV*)ctx;
-    if (strcmp(key, VDEV_KEY_STATE) == 0) return (long)module_thread_get_state(&vdev->mthread);
+    if (strcmp(key, VDEV_KEY_STATE) == 0) return (vdev->flags & FLAG_CLOSED) ? VDEV_CALLBACK_VDEV_CLOSED : (long)module_thread_get_state(&vdev->mthread);
+    if (strcmp(key, VDEV_KEY_IDEV ) == 0) return (long)&vdev->idev;
     return 0;
 }
 

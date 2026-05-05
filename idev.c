@@ -2,22 +2,21 @@
 #include <string.h>
 #include "idev.h"
 
-void* idev_init(char *params, PFN_IDEV_MSG_CB callback, void *cbctx)
+static long defcb(void *cbctx, int type, void *buf, int len) { return 0; }
+
+void* idev_init(void *params, PFN_IDEV_CB callback, void *cbctx)
 {
     IDEV *dev = calloc(1, sizeof(IDEV));
+    if (dev) {
+        dev->callback = callback ? callback : defcb;
+        dev->cbctx    = cbctx;
+    }
     return dev;
 }
 
 void idev_exit(void *ctx) { free(ctx); }
 
-void idev_set(void *ctx, char *name, void *data)
-{
-    if (!ctx || !name) return;
-    IDEV *dev = ctx;
-    if      (strcmp(name, "callback") == 0) dev->callback = (PFN_IDEV_MSG_CB)data;
-    else if (strcmp(name, "cbctx"   ) == 0) dev->cbctx = data;
-}
-
+long idev_set(void *ctx, char *name, void *data) { return 0; }
 long idev_get(void *ctx, char *name, void *data) { return 0; }
 
 int idev_getkey(void *ctx, int key)
