@@ -30,7 +30,7 @@ void idev_getmouse(void *ctx, int *x, int *y, int *btns)
 {
     if (!ctx) return;
     IDEV *dev = ctx;
-    if (x   ) *x    = dev->mouse_x;
-    if (y   ) *y    = dev->mouse_y;
-    if (btns) *btns = dev->mouse_btns;
+    if (x   ) *x    = dev->curr_mouse_x;
+    if (y   ) *y    = dev->curr_mouse_y;
+    if (btns) *btns = dev->curr_mouse_btns;
 }
