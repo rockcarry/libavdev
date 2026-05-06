@@ -412,7 +412,7 @@ static void* vdev_thread_proc(void *param)
     wc.hInstance     = GetModuleHandle(NULL);
     wc.hIcon         = LoadIcon  (NULL, IDI_APPLICATION);
     wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
-    wc.hbrBackground = (HBRUSH)GetStockObject(NULL_BRUSH);
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
     wc.lpszClassName = VDEV_WND_CLASS;
     if (!RegisterClass(&wc)) { printf("<4> vdev RegisterClass failed !\n"); return NULL; }
 
@@ -672,6 +672,7 @@ long vdev_get(void *ctx, char *key, void *val)
     if (strcmp(key, VDEV_KEY_WIDTH ) == 0) return vdev->window_width;
     if (strcmp(key, VDEV_KEY_HEIGHT) == 0) return vdev->window_height;
     if (strcmp(key, VDEV_KEY_IDEV  ) == 0) return (long)&vdev->idev;
+    if (strcmp(key, VDEV_KEY_HWND  ) == 0) return (long) vdev->hwnd;
     return 0;
 }
 

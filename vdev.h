@@ -46,5 +46,6 @@ void  vdev_dump(void *ctx, char *str, int len, int page);
                                                       //          "w:0.999999,h:8,x:center,y:-0.000001"
                                                       // pixfmt can be "argb", "yuyv", "uyvy", "nv12", "nv21", "yuv420p"
 #define VDEV_KEY_IDEV            "p_idev"             // get only, get idev context
+#define VDEV_KEY_HWND            "p_hwnd"             // get only, get vdev hwnd
 
 #endif
