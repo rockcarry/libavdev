@@ -117,7 +117,7 @@ typedef struct {
     MOD_THREAD  mthread;
     PFN_VDEV_CB callback;
     void       *cbctx;
-    IDEV        idev;
+    IDEV       *idev;
 
     HMODULE               hDll;
     PFNDirect3DCreate9    pfnDirect3DCreate9;
@@ -328,18 +328,18 @@ static LRESULT CALLBACK VDEV_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
 #else
     VDEV *vdev = (VDEV*)GetWindowLong(hwnd, GWL_USERDATA);
 #endif
-    IDEV *idev = &vdev->idev;
-    int  ret = -1;
+    IDEV *idev = vdev ? vdev->idev : NULL;
+    int   press, ret = -1;
     switch (uMsg) {
     case WM_KEYUP: case WM_KEYDOWN: case WM_SYSKEYUP: case WM_SYSKEYDOWN:
-        ret = idev->callback(idev->cbctx, IDEV_CALLBACK_KEY_EVENT, (void*)(uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN), wParam);
+        if (!idev) break;
+        press = (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN);
+        ret = idev->callback(idev->cbctx, IDEV_CALLBACK_KEY_EVENT, (void*)press, wParam);
         if (ret != 0 && uMsg == WM_KEYDOWN && wParam == VK_ESCAPE) PostQuitMessage(0);
-        int idx = ((BYTE)wParam) / 32;
-        int bit = ((BYTE)wParam) % 32;
-        if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) idev->key_bits[idx] |= (1 << bit);
-        else idev->key_bits[idx] &= ~(1 << bit);
+        idev_enqueue_key(idev, (wParam & 0xFF) | (press << 8));
         return 0;
     case WM_MOUSEMOVE:
+        if (!idev) break;
         idev->last_mouse_x = idev->curr_mouse_x;
         idev->last_mouse_y = idev->curr_mouse_y;
         idev->curr_mouse_x = (int32_t)((lParam >> 0) & 0xFFFF);
@@ -349,37 +349,43 @@ static LRESULT CALLBACK VDEV_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
     case WM_MOUSEWHEEL:
         return 0;
     case WM_LBUTTONUP:
+        if (!idev) break;
         idev->last_mouse_btns  = idev->curr_mouse_btns;
         idev->curr_mouse_btns &= ~(1 << 0);
         idev->callback(idev->cbctx, IDEV_CALLBACK_MOUSE_LBTNUP, idev, sizeof(IDEV));
         return 0;
     case WM_LBUTTONDOWN:
+        if (!idev) break;
         idev->last_mouse_btns  = idev->curr_mouse_btns;
         idev->curr_mouse_btns |=  (1 << 0);
         idev->callback(idev->cbctx, IDEV_CALLBACK_MOUSE_LBTNDOWN, idev, sizeof(IDEV));
         return 0;
     case WM_MBUTTONUP:
+        if (!idev) break;
         idev->last_mouse_btns  = idev->curr_mouse_btns;
         idev->curr_mouse_btns &= ~(1 << 1);
         idev->callback(idev->cbctx, IDEV_CALLBACK_MOUSE_MBTNUP, idev, sizeof(IDEV));
         return 0;
     case WM_MBUTTONDOWN:
+        if (!idev) break;
         idev->last_mouse_btns  = idev->curr_mouse_btns;
         idev->curr_mouse_btns |=  (1 << 1);
         idev->callback(idev->cbctx, IDEV_CALLBACK_MOUSE_MBTNDOWN, idev, sizeof(IDEV));
         return 0;
     case WM_RBUTTONUP:
+        if (!idev) break;
         idev->last_mouse_btns  = idev->curr_mouse_btns;
         idev->curr_mouse_btns &= ~(1 << 2);
         idev->callback(idev->cbctx, IDEV_CALLBACK_MOUSE_RBTNUP, idev, sizeof(IDEV));
         return 0;
     case WM_RBUTTONDOWN:
+        if (!idev) break;
         idev->last_mouse_btns  = idev->curr_mouse_btns;
         idev->curr_mouse_btns |=  (1 << 2);
         idev->callback(idev->cbctx, IDEV_CALLBACK_MOUSE_RBTNDOWN, idev, sizeof(IDEV));
         return 0;
     case WM_SIZE:
-        if (lParam == 0) break;
+        if (lParam == 0 || !vdev) break;
         vdev->window_width  = LOWORD(lParam);
         vdev->window_height = HIWORD(lParam);
         vdev->flags |= FLAG_REINITSURF;
@@ -391,6 +397,7 @@ static LRESULT CALLBACK VDEV_WNDPROC(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         }
         break;
     case WM_PAINT:
+        if (!vdev) break;
         if (0 != vdev->callback(vdev->cbctx, VDEV_CALLBACK_VDEV_PAINT, NULL, 0)) vdev_render(vdev);
         break;
     case WM_DESTROY:
@@ -497,8 +504,7 @@ void* vdev_init(void *params, PFN_VDEV_CB callback, void *cbctx)
     pthread_mutex_init(&vdev->lock, NULL);
     vdev->callback           = callback ? callback : defcb;
     vdev->cbctx              = cbctx;
-    vdev->idev.callback      = vdev->callback;
-    vdev->idev.cbctx         = vdev->cbctx;
+    vdev->idev               = idev_init("", vdev->callback, vdev->cbctx);
     vdev->mthread.proc       = vdev_thread_proc;
     vdev->mthread.arg        = vdev;
     vdev->hDll               = LoadLibrary(TEXT("d3d9.dll"));
@@ -507,10 +513,7 @@ void* vdev_init(void *params, PFN_VDEV_CB callback, void *cbctx)
     char tmp[64]; snprintf(tmp, sizeof(tmp), "parent:-1,letterbox:1,sw:%d,sh:%d,sx:center,sy:center", vdev->window_width, vdev->window_height);
     vdev_set(vdev, VDEV_KEY_SURFACE_PARAMS, tmp);
 
-    if (strstr(params, "show")) {
-        vdev_set(vdev, VDEV_KEY_STATE, (void*)1);
-        for (int i = 0; i < 10 && !(vdev->flags & FLAG_INITED); i++) usleep(100 * 1000);
-    }
+    if (strstr(params, "show")) vdev_set(vdev, VDEV_KEY_STATE, (void*)0x10001);
     return vdev;
 }
 
@@ -522,13 +525,17 @@ void vdev_exit(void *ctx)
     module_thread_set_state(&vdev->mthread, 0);
     if (vdev->hDll) FreeLibrary(vdev->hDll);
     pthread_mutex_destroy(&vdev->lock);
+    idev_exit(vdev->idev);
     free(vdev);
 }
 
 BMP* vdev_lock(void *ctx, int idx)
 {
     VDEV *vdev = ctx;
-    if (!vdev || !vdev->pD3DDev || idx < 0 || idx >= vdev->surface_count) return NULL;
+    if (!vdev || !vdev->pD3DDev || idx < 0 || idx >= vdev->surface_count) {
+        printf("<4> vdev_lock failed, vdev: %p, pD3DDev: %p, idx: %d, surface_count: %d !\n", vdev, vdev->pD3DDev, idx, vdev->surface_count);
+        return NULL;
+    }
 
     pthread_mutex_lock(&vdev->lock);
     vdev_reinit_surfaces(vdev);
@@ -627,7 +634,11 @@ long vdev_set(void *ctx, char *key, void *val)
     VDEV *vdev = (VDEV*)ctx;
     if (strcmp(key, VDEV_KEY_STATE) == 0) {
         if (vdev->hwnd && ((intptr_t)val == 0 || (intptr_t)val == 4)) PostMessage(vdev->hwnd, WM_CLOSE, 0, 0);
-        module_thread_set_state(&vdev->mthread, (intptr_t)val);
+        module_thread_set_state(&vdev->mthread, (intptr_t)val & 0xFFFF);
+        if (((intptr_t)val & 0xFFFF) != 0 && ((intptr_t)val >> 16)) {
+            for (int i = 0; i < 10 && !(vdev->flags & FLAG_INITED); i++) usleep(100 * 1000);
+            if (!(vdev->flags & FLAG_INITED)) printf("<4> wait for vdev window create timeout !\n");
+        }
     } else if (strncmp(key, VDEV_KEY_SURFACE_PARAMS, sizeof(VDEV_KEY_SURFACE_PARAMS) - 2) == 0 && val) {
         int idx = atoi(key + sizeof(VDEV_KEY_SURFACE_PARAMS) - 2);
         if (idx < 0 || idx >= vdev->surface_count) return -1;
@@ -671,8 +682,8 @@ long vdev_get(void *ctx, char *key, void *val)
     if (strcmp(key, VDEV_KEY_STATE ) == 0) return (vdev->flags & FLAG_CLOSED) ? VDEV_CALLBACK_VDEV_CLOSED : (long)module_thread_get_state(&vdev->mthread);
     if (strcmp(key, VDEV_KEY_WIDTH ) == 0) return vdev->window_width;
     if (strcmp(key, VDEV_KEY_HEIGHT) == 0) return vdev->window_height;
-    if (strcmp(key, VDEV_KEY_IDEV  ) == 0) return (long)&vdev->idev;
-    if (strcmp(key, VDEV_KEY_HWND  ) == 0) return (long) vdev->hwnd;
+    if (strcmp(key, VDEV_KEY_IDEV  ) == 0) return (long)vdev->idev;
+    if (strcmp(key, VDEV_KEY_HWND  ) == 0) return (long)vdev->hwnd;
     return 0;
 }
 
@@ -686,13 +697,13 @@ void vdev_dump(void *ctx, char *str, int len, int page)
         snprintf(str, len,
             "self: %p, flags: 0x%x\n"
             "hwnd: %p, title: %s, window_width: %d, window_height: %d\n"
-            "callback: %p, cbctx: %p\n"
+            "callback: %p, cbctx: %p, idev: %p\n"
             "hDll: %p, pfnDirect3DCreate9: %p\n"
             "pD3D9: %p, pD3DDev: %p, bkbuf: %p\n"
             "mod_thread: %s\n",
             vdev, vdev->flags,
             vdev->hwnd, vdev->title, vdev->window_width, vdev->window_height,
-            vdev->callback, vdev->cbctx,
+            vdev->callback, vdev->cbctx, vdev->idev,
             vdev->hDll, vdev->pfnDirect3DCreate9,
             vdev->pD3D9, vdev->pD3DDev, vdev->bkbuf,
             buf);
