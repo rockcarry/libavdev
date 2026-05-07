@@ -111,8 +111,8 @@ int main(void)
 #ifdef _TEST_VDEV_
 int main(void)
 {
-    void *vdev = vdev_init("show", NULL, NULL);
-    void *idev = (void*)vdev_get(vdev, "idev", NULL);
+    void *vdev = vdev_init("show,resize", NULL, NULL);
+    void *idev = (void*)vdev_get(vdev, VDEV_KEY_IDEV, NULL);
     BMP  *bmp  = NULL;
     int   i, j;
     if ((bmp = vdev_lock(vdev, 0))) {
